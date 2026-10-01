@@ -178,4 +178,17 @@ When triggering the identification endpoint, construct an OpenAI-compatible payl
 ### Phase 7: Cloud Storage, Export & Portfolio Polish — [UPCOMING]
 - Full ZIP archive export (JSON + original photos) via `JSZip`.
 - Provision Cloud Storage bucket for cloud image hosting.
-- Printable PDF insurance / valuation catalog report generator.
+- Printable PDF insurance / valuation catalog report generator.
+
+### Phase 8: Native Mobile Transition (Moving Away from PWA to Native Mobile App) — [REQUIREMENT]
+- **Target**: Transition from browser-bound PWA to a full-featured native mobile app (iOS and Android).
+- **Motivation & Capabilities**:
+  - Eliminate browser IndexedDB storage quotas and cache eviction risks; leverage native filesystem / embedded SQLite for vast, high-resolution photo archives.
+  - Native camera hardware access (manual macro focus lock, optical zoom, torch/flashlight control) essential for macro photography of tiny hallmarks, makers' marks, and backstamps in dark antique markets.
+  - True background sync daemon operating when the app is suspended or minimized.
+  - Native device biometrics (Face ID / Touch ID / BiometricPrompt) to safeguard private inventory valuations.
+  - App Store & Google Play distribution.
+- **Architecture Strategy**:
+  - *Option A (Capacitor Runtime - Recommended)*: Bridge the existing React 19 + TypeScript + Tailwind codebase into Xcode / Android Studio via Capacitor (`@capacitor/camera`, `@capacitor/filesystem`, `@capacitor-community/sqlite`). Retains 95%+ of current tested frontend and offline sync logic while enabling full native device APIs.
+  - *Option B (React Native / Expo)*: Rewrite the UI layer with native components while sharing existing TypeScript domain models and cloud services.
+
