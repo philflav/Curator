@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#faf8f5] text-stone-800 antialiased;
+  }
+}
+
+/* Custom scrollbars for clean catalog feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f4ede4;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #dac2a6;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ba8c60;
+}
