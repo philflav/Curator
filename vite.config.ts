@@ -12,23 +12,43 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      devOptions: {
+        enabled: true,
+      },
+      includeAssets: [
+        'favicon.ico',
+        'apple-touch-icon.png',
+        'mask-icon.svg',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+      ],
       manifest: {
-        name: 'Curator — Antiques & Collectibles Catalog',
+        id: '/',
+        start_url: '/',
+        scope: '/',
+        name: 'Curator — Antiques & Fine Art Catalog',
         short_name: 'Curator',
         description: 'Offline-ready cataloging and valuation tool for antiques, ceramics, and fine art.',
         theme_color: '#5f4131',
         background_color: '#faf8f5',
         display: 'standalone',
+        orientation: 'portrait-primary',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
+            purpose: 'any maskable',
           },
           {
-            src: 'pwa-512x512.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+          {
+            src: '/apple-touch-icon.png',
+            sizes: '180x180',
             type: 'image/png',
           },
         ],

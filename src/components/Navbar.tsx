@@ -11,7 +11,8 @@ import {
   RefreshCw,
   WifiOff,
   CloudCheck,
-  Sparkles
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -53,6 +54,40 @@ export const Navbar: React.FC<NavbarProps> = ({
   isOnline = true,
   onTriggerSync,
 }) => {
+  const [installPrompt, setInstallPrompt] = React.useState<any>(null);
+  const [isStandalone, setIsStandalone] = React.useState(false);
+
+  React.useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsStandalone(true);
+    }
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) {
+      alert(
+        "To install Curator on your device:\n\n" +
+        "• On iPhone / iPad (Safari): Tap the Share button at the bottom of the screen, scroll down and tap 'Add to Home Screen'.\n\n" +
+        "• On Android (Chrome / Edge): Tap the three dots menu at the top right, then select 'Install App' or 'Add to Home screen'."
+      );
+      return;
+    }
+    installPrompt.prompt();
+    const result = await installPrompt.userChoice;
+    if (result.outcome === 'accepted') {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 bg-[#faf8f5]/95 backdrop-blur-md border-b border-stone-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
@@ -242,6 +277,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 title="AI Vision & Appraisal Settings"
               >
                 <Sparkles className="w-4 h-4 text-amber-700" />
+              </button>
+            )}
+
+            {/* Install Mobile PWA Button */}
+            {!isStandalone && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-medium px-3 py-2 rounded-lg text-sm shadow-xs transition"
+                title="Install Curator as an app on your phone or desktop"
+              >
+                <Smartphone className="w-4 h-4 text-amber-800" />
+                <span className="hidden sm:inline">Install App</span>
               </button>
             )}
 
