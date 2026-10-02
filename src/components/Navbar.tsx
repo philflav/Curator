@@ -10,7 +10,8 @@ import {
   Camera,
   RefreshCw,
   WifiOff,
-  CloudCheck
+  CloudCheck,
+  Sparkles
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -22,6 +23,7 @@ interface NavbarProps {
   onExport: () => void;
   onOpenVisualSearch: () => void;
   onOpenSettings: () => void;
+  onOpenAiSettings?: () => void;
   onResetDemo: () => void;
   isFirebaseActive: boolean;
   totalItemsCount: number;
@@ -41,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onExport,
   onOpenVisualSearch,
   onOpenSettings,
+  onOpenAiSettings,
   onResetDemo,
   isFirebaseActive,
   totalItemsCount,
@@ -230,6 +233,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Camera className="w-4 h-4 text-amber-700" />
               <span className="hidden sm:inline">Visual Match</span>
             </button>
+
+            {/* AI Settings Button */}
+            {onOpenAiSettings && (
+              <button
+                onClick={onOpenAiSettings}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 rounded-lg border border-stone-200 bg-white transition"
+                title="AI Vision & Appraisal Settings"
+              >
+                <Sparkles className="w-4 h-4 text-amber-700" />
+              </button>
+            )}
 
             {/* Export Collection Button */}
             <button

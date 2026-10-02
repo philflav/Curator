@@ -29,6 +29,7 @@ import { ItemFormModal } from './components/ItemFormModal';
 import { FirebaseModal } from './components/FirebaseModal';
 import { ExportModal } from './components/ExportModal';
 import { VisualSearchModal } from './components/VisualSearchModal';
+import { AIVisionSettingsModal } from './components/AIVisionSettingsModal';
 import { 
   ArrowUpDown, 
   Loader2,
@@ -53,6 +54,7 @@ export function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isVisualSearchOpen, setIsVisualSearchOpen] = useState(false);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
   const [isFirebaseActive, setIsFirebaseActive] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -248,6 +250,7 @@ export function App() {
         onExport={() => setIsExportOpen(true)}
         onOpenVisualSearch={() => setIsVisualSearchOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenAiSettings={() => setIsAiSettingsOpen(true)}
         onResetDemo={handleResetDemo}
         isFirebaseActive={isFirebaseActive}
         totalItemsCount={items.length}
@@ -512,6 +515,7 @@ export function App() {
         item={activeItem}
         onClose={() => setActiveItem(null)}
         onEdit={(item) => {
+          setActiveItem(null);
           setItemToEdit(item);
           setIsFormOpen(true);
         }}
@@ -569,6 +573,12 @@ export function App() {
           });
           setIsFormOpen(true);
         }}
+      />
+
+      {/* AI Vision Settings Modal */}
+      <AIVisionSettingsModal
+        isOpen={isAiSettingsOpen}
+        onClose={() => setIsAiSettingsOpen(false)}
       />
 
       {/* Toast Notification Banner */}

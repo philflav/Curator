@@ -10,12 +10,22 @@ import {
   getCustomSubcategoriesForCategory 
 } from '../services/subcategoryService';
 import { 
+  analyzeImageAndCompleteDetails, 
+  enhanceDescriptionWithAI, 
+  researchMarksWithAI,
+  type AnalyzedItemDetails 
+} from '../services/aiVisionService';
+import { AIVisionSettingsModal } from './AIVisionSettingsModal';
+import { 
   X, 
   Upload, 
   Camera, 
   Check, 
   Loader2, 
-  Plus 
+  Plus,
+  Sparkles,
+  Settings,
+  Undo2
 } from 'lucide-react';
 
 interface ItemFormModalProps {
@@ -36,6 +46,14 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const [imagePreview, setImagePreview] = useState<string>('');
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [imageStats, setImageStats] = useState<string>('');
+
+  // AI Appraisal State
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [aiSuccessBanner, setAiSuccessBanner] = useState<{ confidence: number; detectedMarks: string[] } | null>(null);
+  const [backupFormData, setBackupFormData] = useState<any>(null);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [isEnhancingDescription, setIsEnhancingDescription] = useState(false);
+  const [isResearchingMarks, setIsResearchingMarks] = useState(false);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -137,6 +155,148 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     } catch (err) {
       console.error('Failed to process image:', err);
       alert('Error processing image. Please try another file.');
+    }
+  };
+
+  const handleAiAnalyzeImage = async () => {
+    if (!imagePreview) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    // Backup current state to enable Undo
+    setBackupFormData({
+      title,
+      category,
+      subcategory,
+      maker,
+      modelOrPattern,
+      periodOrYear,
+      condition,
+      conditionNotes,
+      dimHeight,
+      dimWidth,
+      dimDepth,
+      dimUnit,
+      currency,
+      estimatedValue,
+      description,
+      notes,
+    });
+
+    setIsAnalyzingAi(true);
+    setAiSuccessBanner(null);
+
+    try {
+      const result: AnalyzedItemDetails = await analyzeImageAndCompleteDetails(imagePreview, {
+        title,
+        category,
+        subcategory,
+        maker,
+        modelOrPattern,
+        periodOrYear,
+        condition,
+        conditionNotes,
+        description,
+        notes,
+        estimatedValue: estimatedValue ? parseFloat(estimatedValue) : undefined,
+      });
+
+      if (result.title) setTitle(result.title);
+      if (result.category) {
+        setCategory(result.category);
+        const subList = getSubcategoriesForCategory(result.category);
+        setAvailableSubcategories(subList);
+      }
+      if (result.subcategory) setSubcategory(result.subcategory);
+      if (result.maker) setMaker(result.maker);
+      if (result.modelOrPattern) setModelOrPattern(result.modelOrPattern);
+      if (result.periodOrYear) setPeriodOrYear(result.periodOrYear);
+      if (result.condition) setCondition(result.condition);
+      if (result.conditionNotes) setConditionNotes(result.conditionNotes);
+      if (result.dimensions?.height) setDimHeight(String(result.dimensions.height));
+      if (result.dimensions?.width) setDimWidth(String(result.dimensions.width));
+      if (result.dimensions?.depth) setDimDepth(String(result.dimensions.depth));
+      if (result.dimensions?.unit) setDimUnit(result.dimensions.unit);
+      if (result.estimatedValue) setEstimatedValue(String(result.estimatedValue));
+      if (result.currency) setCurrency(result.currency);
+      if (result.description) setDescription(result.description);
+      if (result.notes) setNotes(result.notes);
+
+      setAiSuccessBanner({
+        confidence: result.confidenceScore || 90,
+        detectedMarks: result.detectedMarks || [],
+      });
+    } catch (err: any) {
+      console.error('AI Appraisal failed:', err);
+      alert(`AI Analysis failed: ${err?.message || err}`);
+    } finally {
+      setIsAnalyzingAi(false);
+    }
+  };
+
+  const handleUndoAiFill = () => {
+    if (!backupFormData) return;
+    setTitle(backupFormData.title);
+    setCategory(backupFormData.category);
+    setSubcategory(backupFormData.subcategory);
+    setMaker(backupFormData.maker);
+    setModelOrPattern(backupFormData.modelOrPattern);
+    setPeriodOrYear(backupFormData.periodOrYear);
+    setCondition(backupFormData.condition);
+    setConditionNotes(backupFormData.conditionNotes);
+    setDimHeight(backupFormData.dimHeight);
+    setDimWidth(backupFormData.dimWidth);
+    setDimDepth(backupFormData.dimDepth);
+    setDimUnit(backupFormData.dimUnit);
+    setCurrency(backupFormData.currency);
+    setEstimatedValue(backupFormData.estimatedValue);
+    setDescription(backupFormData.description);
+    setNotes(backupFormData.notes);
+    setBackupFormData(null);
+    setAiSuccessBanner(null);
+  };
+
+  const handleEnhanceDescription = async () => {
+    if (!imagePreview && !title) {
+      alert('Please upload an image or provide a title first.');
+      return;
+    }
+    setIsEnhancingDescription(true);
+    try {
+      const enhanced = await enhanceDescriptionWithAI(imagePreview || '', {
+        title,
+        category,
+        subcategory,
+        maker,
+        modelOrPattern,
+        periodOrYear,
+        condition,
+        description,
+      });
+      setDescription(enhanced);
+    } catch (err: any) {
+      console.error('Enhance description failed:', err);
+      alert(`Could not enhance description: ${err?.message || err}`);
+    } finally {
+      setIsEnhancingDescription(false);
+    }
+  };
+
+  const handleResearchMarks = async () => {
+    if (!imagePreview && !maker && !title) {
+      alert('Please upload an image or provide a maker/mark name.');
+      return;
+    }
+    setIsResearchingMarks(true);
+    try {
+      const research = await researchMarksWithAI(imagePreview || '', maker || title);
+      setNotes((prev) => prev ? `${prev}\n\n[Research Notes]: ${research.notes}` : research.notes);
+    } catch (err: any) {
+      console.error('Research marks failed:', err);
+      alert(`Could not research marks: ${err?.message || err}`);
+    } finally {
+      setIsResearchingMarks(false);
     }
   };
 
@@ -274,11 +434,85 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                     ✓ {imageStats}
                   </div>
                 )}
-                <p className="text-[11px] text-stone-500">
-                  Images are client-side optimized before storage to conserve bandwidth and device storage quota.
-                </p>
+                {imagePreview ? (
+                  <div className="pt-1 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleAiAnalyzeImage}
+                      disabled={isAnalyzingAi}
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-amber-800 to-stone-900 hover:from-amber-900 hover:to-stone-950 text-amber-100 rounded-lg font-medium text-xs shadow-xs flex items-center gap-1.5 transition hover:scale-[1.01] disabled:opacity-60"
+                      title="Analyze this photograph using AI to auto-complete title, maker, period, valuation, and description"
+                    >
+                      {isAnalyzingAi ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                          <span>AI Appraising Object & Backstamp...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <span>AI Auto-Complete Details</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAiSettingsOpen(true)}
+                      className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 rounded-lg border border-stone-300 bg-white transition"
+                      title="AI Appraisal Vision Settings"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-stone-500">
+                    Images are client-side optimized before storage. Once uploaded, you can use AI to auto-complete details.
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* AI Appraisal Success Banner */}
+            {aiSuccessBanner && (
+              <div className="mt-3 p-3 bg-amber-50/95 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start justify-between gap-3 animate-in fade-in duration-200 shadow-2xs">
+                <div className="flex items-start gap-2.5">
+                  <Sparkles className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold block text-stone-900">
+                      AI Visual Appraisal Applied ({aiSuccessBanner.confidence}% confidence)
+                    </span>
+                    <span className="text-[11px] text-stone-600 block">
+                      Title, maker, period, valuation, and comprehensive description filled from visual analysis.
+                    </span>
+                    {aiSuccessBanner.detectedMarks && aiSuccessBanner.detectedMarks.length > 0 && (
+                      <span className="block text-[11px] text-amber-900 font-mono mt-1 bg-amber-100/70 px-2 py-0.5 rounded">
+                        Detected: {aiSuccessBanner.detectedMarks.join(' • ')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {backupFormData && (
+                    <button
+                      type="button"
+                      onClick={handleUndoAiFill}
+                      className="px-2.5 py-1 text-[11px] font-semibold text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 rounded-lg shadow-2xs flex items-center gap-1"
+                      title="Revert form back to values before AI fill"
+                    >
+                      <Undo2 className="w-3 h-3 text-stone-500" />
+                      Undo
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAiSuccessBanner(null)}
+                    className="p-1 text-stone-400 hover:text-stone-700 rounded"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Title, Category & Subcategory */}
@@ -539,11 +773,29 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
           {/* Freeform Item Description */}
           <div>
-            <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1">
-              Item Description
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold">
+                Item Description
+              </label>
+              {(imagePreview || title) && (
+                <button
+                  type="button"
+                  onClick={handleEnhanceDescription}
+                  disabled={isEnhancingDescription}
+                  className="text-[11px] text-amber-800 hover:text-amber-950 font-medium flex items-center gap-1 transition disabled:opacity-50"
+                  title="Generate or expand comprehensive appraisal description using AI"
+                >
+                  {isEnhancingDescription ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                  ) : (
+                    <Sparkles className="w-3 h-3 text-amber-700" />
+                  )}
+                  <span>Enhance with AI</span>
+                </button>
+              )}
+            </div>
             <textarea
-              rows={3}
+              rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Comprehensive description of the item, aesthetics, subject matter, materials, and overall impression..."
@@ -625,9 +877,27 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
           {/* Notes & Backstamp Description */}
           <div>
-            <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1">
-              Curator Remarks & Mark Description
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold">
+                Curator Remarks & Mark Description
+              </label>
+              {(imagePreview || maker || title) && (
+                <button
+                  type="button"
+                  onClick={handleResearchMarks}
+                  disabled={isResearchingMarks}
+                  className="text-[11px] text-amber-800 hover:text-amber-950 font-medium flex items-center gap-1 transition disabled:opacity-50"
+                  title="Research hallmarks, backstamps, and factory marks using AI"
+                >
+                  {isResearchingMarks ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                  ) : (
+                    <Sparkles className="w-3 h-3 text-amber-700" />
+                  )}
+                  <span>Research Marks with AI</span>
+                </button>
+              )}
+            </div>
             <textarea
               rows={3}
               value={notes}
@@ -672,6 +942,12 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* AI Vision Settings Modal */}
+      <AIVisionSettingsModal
+        isOpen={isAiSettingsOpen}
+        onClose={() => setIsAiSettingsOpen(false)}
+      />
     </div>
   );
 };
