@@ -19,18 +19,18 @@ export const CATEGORIES: Category[] = [
 
 export const DEFAULT_SUBCATEGORIES: Record<Category, string[]> = {
   'Ceramics & Porcelain': [
-    'Japanese',
     'Chinese',
-    'Oriental',
     'Doulton Lambeth',
+    'Japanese',
     'Moorcroft',
+    'Oriental',
   ],
-  'Furniture': ['Seating', 'Tables', 'Cabinets & Bookcases', 'Chests', 'Clocks & Mirrors'],
-  'Glass': ['Art Glass', 'Cut Crystal', 'Stained Glass', 'Carnival Glass'],
-  'Clocks & Watches': ['Bracket Clocks', 'Longcase / Grandfather', 'Carriage Clocks', 'Pocket Watches', 'Wristwatches'],
-  'Fine Art': ['Oil Paintings', 'Watercolors', 'Prints & Lithographs', 'Sculpture'],
-  'Metalware': ['Silver & Silverplate', 'Bronze & Brass', 'Pewter', 'Cast Iron'],
-  'Other': ['Textiles', 'Books & Ephemera', 'Jewelry', 'Collectibles'],
+  'Furniture': ['Cabinets & Bookcases', 'Chests', 'Clocks & Mirrors', 'Seating', 'Tables'],
+  'Glass': ['Art Glass', 'Carnival Glass', 'Cut Crystal', 'Stained Glass'],
+  'Clocks & Watches': ['Bracket Clocks', 'Carriage Clocks', 'Longcase / Grandfather', 'Pocket Watches', 'Wristwatches'],
+  'Fine Art': ['Oil Paintings', 'Prints & Lithographs', 'Sculpture', 'Watercolors'],
+  'Metalware': ['Bronze & Brass', 'Cast Iron', 'Pewter', 'Silver & Silverplate'],
+  'Other': ['Books & Ephemera', 'Collectibles', 'Jewelry', 'Textiles'],
 };
 
 export type Condition = 'Mint' | 'Excellent' | 'Good' | 'Fair' | 'Restored' | 'Damaged';

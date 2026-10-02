@@ -59,7 +59,7 @@ export function isCustomSubcategory(category: string, subcategoryName: string): 
 }
 
 /**
- * Get all available subcategories for a given category (defaults + user customized).
+ * Get all available subcategories for a given category (defaults + user customized), sorted alphabetically.
  */
 export function getSubcategoriesForCategory(category: Category | string): string[] {
   const defaults = (DEFAULT_SUBCATEGORIES as Record<string, string[]>)[category] || [];
@@ -72,15 +72,16 @@ export function getSubcategoriesForCategory(category: Category | string): string
       combined.push(c);
     }
   }
-  return combined;
+  return combined.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 /**
- * Get only user custom subcategories for a category.
+ * Get only user custom subcategories for a category, sorted alphabetically.
  */
 export function getCustomSubcategoriesForCategory(category: Category | string): string[] {
   const customMap = getCustomSubcategories();
-  return customMap[category] || [];
+  const list = customMap[category] || [];
+  return [...list].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 /**
