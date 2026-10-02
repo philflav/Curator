@@ -62,7 +62,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
       setModel('gpt-4o-mini');
     } else if (newProvider === 'gemini') {
       setBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai');
-      setModel('gemini-1.5-flash');
+      setModel('gemini-2.5-flash');
     } else if (newProvider === 'ollama') {
       setBaseUrl('http://localhost:11434/v1');
       setModel('llava');
@@ -193,7 +193,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                   {provider === 'gemini' && <Check className="w-3.5 h-3.5 text-amber-800" />}
                 </div>
                 <span className="text-[11px] text-stone-500">
-                  Gemini 1.5 / 2.0 Flash
+                  Gemini 2.5 Flash / Lite
                 </span>
               </button>
 
