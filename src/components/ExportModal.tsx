@@ -106,7 +106,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <FileSpreadsheet className="w-5 h-5 text-amber-700 mt-0.5" />
                 <div>
                   <div className="text-xs font-semibold">CSV / Excel</div>
-                  <div className="text-[11px] text-stone-500">Spreadsheets, audit sheets</div>
+                  <div className="text-[11px] text-stone-500">Metadata only (no images)</div>
                 </div>
               </button>
 

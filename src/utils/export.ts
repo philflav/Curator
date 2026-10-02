@@ -32,7 +32,6 @@ export function exportToCSV(items: Item[], categoryFilter?: string): void {
     'Acquisition Date',
     'Acquisition Location',
     'Curator Notes',
-    'Primary Image URL',
     'Cataloged At',
   ];
 
@@ -57,7 +56,6 @@ export function exportToCSV(items: Item[], categoryFilter?: string): void {
     escapeCSV(item.acquisitionDate || ''),
     escapeCSV(item.acquisitionLocation || ''),
     escapeCSV(item.notes || ''),
-    escapeCSV(item.primaryImageUrl || ''),
     escapeCSV(new Date(item.createdAt).toISOString()),
   ]);
 
