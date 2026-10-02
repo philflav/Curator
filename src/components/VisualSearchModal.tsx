@@ -194,11 +194,17 @@ export const VisualSearchModal: React.FC<VisualSearchModalProps> = ({
                   <div className="text-[11px] font-mono uppercase tracking-wider text-stone-500 mb-2 font-semibold">
                     New Uploaded Image
                   </div>
-                  <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-stone-100 border border-stone-200">
+                  <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-stone-100 border border-stone-200 flex items-center justify-center">
+                    <img
+                      src={candidateImage}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none"
+                    />
                     <img
                       src={candidateImage}
                       alt="Candidate"
-                      className="w-full h-full object-cover"
+                      className="relative z-1 w-full h-full object-contain object-center p-2"
                     />
                   </div>
                   <div className="mt-2 text-xs text-stone-600">
@@ -218,13 +224,21 @@ export const VisualSearchModal: React.FC<VisualSearchModalProps> = ({
                       </span>
                     </div>
 
-                    <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-stone-100 border border-stone-200">
+                    <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-stone-100 border border-stone-200 flex items-center justify-center">
                       {currentMatch.matchedItem.primaryImageUrl ? (
-                        <img
-                          src={currentMatch.matchedItem.primaryImageUrl}
-                          alt={currentMatch.matchedItem.title}
-                          className="w-full h-full object-cover"
-                        />
+                        <>
+                          <img
+                            src={currentMatch.matchedItem.primaryImageUrl}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none"
+                          />
+                          <img
+                            src={currentMatch.matchedItem.primaryImageUrl}
+                            alt={currentMatch.matchedItem.title}
+                            className="relative z-1 w-full h-full object-contain object-center p-2"
+                          />
+                        </>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-xs text-stone-400">
                           No Image

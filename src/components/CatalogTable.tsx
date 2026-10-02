@@ -51,13 +51,13 @@ export const CatalogTable: React.FC<CatalogTableProps> = ({
                 <td className="px-4 py-3">
                   <div 
                     onClick={() => onSelectItem(item)}
-                    className="w-12 h-12 rounded-lg bg-stone-100 overflow-hidden border border-stone-200 cursor-pointer flex-shrink-0"
+                    className="w-12 h-12 rounded-lg bg-stone-100 overflow-hidden border border-stone-200 cursor-pointer flex-shrink-0 flex items-center justify-center p-0.5"
                   >
                     {item.primaryImageUrl ? (
                       <img
                         src={item.primaryImageUrl}
                         alt={item.title}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain object-center"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-stone-400">

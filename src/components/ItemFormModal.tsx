@@ -386,16 +386,22 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full sm:w-44 h-36 rounded-xl border-2 border-dashed border-stone-300 hover:border-amber-700/60 bg-stone-100/70 hover:bg-amber-50/30 flex flex-col items-center justify-center cursor-pointer transition overflow-hidden relative group"
+                className="w-full sm:w-48 h-36 rounded-xl border-2 border-dashed border-stone-300 hover:border-amber-700/60 bg-stone-100/70 hover:bg-amber-50/30 flex flex-col items-center justify-center cursor-pointer transition overflow-hidden relative group p-1"
               >
                 {imagePreview ? (
                   <>
                     <img
                       src={imagePreview}
-                      alt="Preview"
-                      className="w-full h-full object-cover"
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none"
                     />
-                    <div className="absolute inset-0 bg-stone-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-medium">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="relative z-1 w-full h-full object-contain object-center"
+                    />
+                    <div className="absolute inset-0 z-10 bg-stone-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-medium backdrop-blur-2xs">
                       Change Photo
                     </div>
                   </>

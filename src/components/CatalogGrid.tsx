@@ -43,14 +43,22 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
           className="group cursor-pointer bg-white rounded-xl border border-stone-200/90 shadow-sm hover:shadow-md hover:border-amber-700/50 transition-all duration-200 flex flex-col overflow-hidden"
         >
           {/* Card Hero Image */}
-          <div className="relative aspect-[4/3] bg-stone-100 overflow-hidden border-b border-stone-100">
+          <div className="relative aspect-[4/3] bg-stone-100 overflow-hidden border-b border-stone-200/60 flex items-center justify-center">
             {item.primaryImageUrl ? (
-              <img
-                src={item.primaryImageUrl}
-                alt={item.title}
-                loading="lazy"
-                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
-              />
+              <>
+                <img
+                  src={item.primaryImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none"
+                />
+                <img
+                  src={item.primaryImageUrl}
+                  alt={item.title}
+                  loading="lazy"
+                  className="relative z-1 w-full h-full object-contain object-center p-2 group-hover:scale-105 transition-transform duration-300"
+                />
+              </>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-stone-400">
                 <ImageOff className="w-8 h-8 mb-1" />

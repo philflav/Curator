@@ -10,7 +10,8 @@ import {
   ImageOff,
   Calendar,
   MapPin,
-  BookOpen
+  BookOpen,
+  Maximize2
 } from 'lucide-react';
 
 interface ItemDetailModalProps {
@@ -28,6 +29,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onDelete,
   isSyncPending,
 }) => {
+  const [isLightboxOpen, setIsLightboxOpen] = React.useState(false);
+
   if (!item) return null;
 
   const currencySymbol = item.currency === 'GBP' ? '£' : item.currency === 'USD' ? '$' : '€';
@@ -104,13 +107,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
           {/* Main Visual & Title */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-inner">
+            <div 
+              onClick={() => item.primaryImageUrl && setIsLightboxOpen(true)}
+              className={`relative aspect-[4/3] rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-inner flex items-center justify-center group ${
+                item.primaryImageUrl ? 'cursor-zoom-in' : ''
+              }`}
+              title={item.primaryImageUrl ? 'Click to view full image fitted to window' : undefined}
+            >
               {item.primaryImageUrl ? (
-                <img
-                  src={item.primaryImageUrl}
-                  alt={item.title}
-                  className="w-full h-full object-cover object-center"
-                />
+                <>
+                  <img
+                    src={item.primaryImageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none"
+                  />
+                  <img
+                    src={item.primaryImageUrl}
+                    alt={item.title}
+                    className="relative z-1 w-full h-full object-contain object-center p-2.5 transition-transform duration-200 group-hover:scale-102"
+                  />
+                  <div className="absolute bottom-2 right-2 z-10 p-1.5 rounded-lg bg-stone-900/70 text-white opacity-0 group-hover:opacity-100 transition shadow-sm flex items-center gap-1.5 text-[11px] font-sans backdrop-blur-xs">
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>Fit to Window</span>
+                  </div>
+                </>
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-stone-400">
                   <ImageOff className="w-10 h-10 mb-2" />
@@ -297,6 +318,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         </div>
 
       </div>
+
+      {/* Full-Screen Lightbox Modal: Scales image completely to fit the browser window */}
+      {isLightboxOpen && item.primaryImageUrl && (
+        <div 
+          className="fixed inset-0 z-60 bg-stone-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            <span className="text-xs font-mono text-stone-300 bg-stone-900/80 px-3 py-1.5 rounded-full border border-stone-700 shadow-md">
+              {item.title}
+            </span>
+            <button
+              onClick={() => setIsLightboxOpen(false)}
+              className="p-2 text-white/80 hover:text-white bg-stone-800/80 hover:bg-stone-700 rounded-full transition shadow-md"
+              title="Close image view (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="relative max-w-[95vw] max-h-[88vh] flex items-center justify-center">
+            <img
+              src={item.primaryImageUrl}
+              alt={item.title}
+              className="max-w-[95vw] max-h-[85vh] object-contain rounded-lg shadow-2xl border border-stone-800"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <div className="text-center mt-3 text-stone-400 text-xs font-mono">
+            Full view scaled to window • Click outside or press Esc to close
+          </div>
+        </div>
+      )}
     </div>
   );
 };
