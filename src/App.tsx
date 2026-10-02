@@ -200,7 +200,7 @@ export function App() {
 
         // Search term
         if (!term) return true;
-        const inTitle = item.title.toLowerCase().includes(term);
+        const inTitle = (item.title || '').toLowerCase().includes(term);
         const inMaker = (item.maker || '').toLowerCase().includes(term);
         const inPattern = (item.modelOrPattern || '').toLowerCase().includes(term);
         const inPeriod = (item.periodOrYear || '').toLowerCase().includes(term);
@@ -213,7 +213,7 @@ export function App() {
       })
       .sort((a, b) => {
         if (sortBy === 'updated') {
-          return b.updatedAt - a.updatedAt;
+          return (b.updatedAt || 0) - (a.updatedAt || 0);
         }
         if (sortBy === 'value-desc') {
           return (b.estimatedValue || 0) - (a.estimatedValue || 0);
@@ -222,10 +222,10 @@ export function App() {
           return (a.estimatedValue || 0) - (b.estimatedValue || 0);
         }
         if (sortBy === 'maker') {
-          return (a.maker || 'zzz').localeCompare(b.maker || 'zzz');
+          return (a.maker || '').localeCompare(b.maker || '');
         }
         if (sortBy === 'title') {
-          return a.title.localeCompare(b.title);
+          return (a.title || '').localeCompare(b.title || '');
         }
         return 0;
       });
