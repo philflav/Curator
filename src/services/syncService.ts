@@ -90,6 +90,29 @@ export async function getPendingSyncCount(): Promise<number> {
   }
 }
 
+export async function cancelPendingSyncForItem(itemId: string): Promise<void> {
+  if (!itemId) return;
+  try {
+    const db = await openIDB();
+    const existing = await getPendingSyncItems();
+    const matching = existing.filter((entry) => entry.itemId === itemId);
+    if (matching.length === 0) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_SYNC_QUEUE, 'readwrite');
+      const store = tx.objectStore(STORE_SYNC_QUEUE);
+      for (const m of matching) {
+        store.delete(m.id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    notifyListeners();
+  } catch (e) {
+    console.warn('Failed to cancel pending sync for item:', e);
+  }
+}
+
 export async function enqueueSyncAction(
   action: 'save' | 'delete',
   item?: Item,
@@ -102,6 +125,22 @@ export async function enqueueSyncAction(
     const db = await openIDB();
     const existing = await getPendingSyncItems();
     const existingEntry = existing.find((entry) => entry.itemId === targetId);
+
+    // If an item is being deleted, remove any pending save entries for it
+    if (action === 'delete') {
+      const pendingSaves = existing.filter((entry) => entry.itemId === targetId && entry.action === 'save');
+      if (pendingSaves.length > 0) {
+        await new Promise<void>((resolve) => {
+          const tx = db.transaction(STORE_SYNC_QUEUE, 'readwrite');
+          const store = tx.objectStore(STORE_SYNC_QUEUE);
+          for (const s of pendingSaves) {
+            store.delete(s.id);
+          }
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        });
+      }
+    }
 
     const queueId = existingEntry ? existingEntry.id : `sync_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -254,6 +293,25 @@ export async function processSyncQueue(): Promise<{
     for (const queueItem of queue) {
       try {
         if (queueItem.action === 'save' && queueItem.item) {
+          // Double check if item was deleted locally while in queue
+          const isLocallyDeleted = await new Promise<boolean>((resolve) => {
+            try {
+              const tx = idb.transaction(STORE_ITEMS, 'readonly');
+              const store = tx.objectStore(STORE_ITEMS);
+              const req = store.get(queueItem.itemId);
+              req.onsuccess = () => resolve(!req.result);
+              req.onerror = () => resolve(false);
+            } catch {
+              resolve(false);
+            }
+          });
+
+          if (isLocallyDeleted) {
+            // Item was deleted locally. Discard stale save so it never repopulates Firestore.
+            await removeSyncQueueItemInternal(idb, queueItem.id);
+            continue;
+          }
+
           let itemToSave = { ...queueItem.item };
 
           // Try uploading primary image if it's a data URL, with strict 2.5s timeout
@@ -314,6 +372,14 @@ export async function processSyncQueue(): Promise<{
             deleteDoc(docRef),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore delete timeout (4.5s)')), 4500))
           ]);
+
+          // Ensure purged from local IndexedDB
+          try {
+            const tx = idb.transaction(STORE_ITEMS, 'readwrite');
+            tx.objectStore(STORE_ITEMS).delete(queueItem.itemId);
+          } catch {
+            // ignore
+          }
 
           await removeSyncQueueItemInternal(idb, queueItem.id);
           processed++;

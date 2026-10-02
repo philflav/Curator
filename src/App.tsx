@@ -163,6 +163,7 @@ export function App() {
     if (activeItem?.id === id) {
       setActiveItem(null);
     }
+    showToast('✓ Item removed from catalog');
   };
 
   const handleResetDemo = () => {
