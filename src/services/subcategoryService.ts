@@ -1,4 +1,4 @@
-import { type Category, DEFAULT_SUBCATEGORIES } from '../types/schema';
+import { type Category, type Item, DEFAULT_SUBCATEGORIES } from '../types/schema';
 import { initFirebase, isFirebaseConfigured, sanitizeForFirestore } from './firebase';
 import { doc, getDoc, setDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore';
 
@@ -59,9 +59,9 @@ export function isCustomSubcategory(category: string, subcategoryName: string): 
 }
 
 /**
- * Get all available subcategories for a given category (defaults + user customized), sorted alphabetically.
+ * Get all available subcategories for a given category (defaults + user customized + subcategories on catalog items), sorted alphabetically.
  */
-export function getSubcategoriesForCategory(category: Category | string): string[] {
+export function getSubcategoriesForCategory(category: Category | string, currentItems?: Item[]): string[] {
   const defaults = (DEFAULT_SUBCATEGORIES as Record<string, string[]>)[category] || [];
   const customMap = getCustomSubcategories();
   const custom = customMap[category] || [];
@@ -72,7 +72,69 @@ export function getSubcategoriesForCategory(category: Category | string): string
       combined.push(c);
     }
   }
+
+  // Also include any subcategories present on items in this category
+  if (currentItems && Array.isArray(currentItems)) {
+    for (const item of currentItems) {
+      if (item.category === category && item.subcategory && item.subcategory.trim()) {
+        const sub = item.subcategory.trim();
+        if (!combined.some((item) => item.toLowerCase() === sub.toLowerCase())) {
+          combined.push(sub);
+        }
+      }
+    }
+  }
+
   return combined.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * Scans all items and automatically ensures that any subcategory tagged on an item
+ * (e.g. "Ladro", "Beswick") is added to the custom subcategories map and synced
+ * to Cloud Firestore metadata.
+ */
+export async function syncSubcategoriesWithItems(items: Item[]): Promise<void> {
+  if (!items || !Array.isArray(items) || items.length === 0) return;
+
+  const customMap = getCustomSubcategories();
+  let hasNew = false;
+
+  for (const item of items) {
+    if (!item.category || !item.subcategory || !item.subcategory.trim()) continue;
+    const cat = item.category;
+    const sub = item.subcategory.trim();
+
+    const defaults = (DEFAULT_SUBCATEGORIES as Record<string, string[]>)[cat] || [];
+    const existingCustom = customMap[cat] || [];
+
+    const inDefaults = defaults.some((d) => d.toLowerCase() === sub.toLowerCase());
+    const inCustom = existingCustom.some((c) => c.toLowerCase() === sub.toLowerCase());
+
+    if (!inDefaults && !inCustom) {
+      customMap[cat] = [...existingCustom, sub];
+      hasNew = true;
+    }
+  }
+
+  if (hasNew) {
+    saveCustomSubcategories(customMap);
+
+    if (isFirebaseConfigured()) {
+      const { db } = initFirebase();
+      if (db) {
+        try {
+          const metaRef = doc(db, 'metadata', METADATA_DOC_PATH);
+          await setDoc(metaRef, sanitizeForFirestore({
+            customSubcategories: customMap,
+            defaultSubcategories: DEFAULT_SUBCATEGORIES,
+            updatedAt: Date.now(),
+          }), { merge: true });
+        } catch (err) {
+          console.warn('Could not sync item subcategories to Firestore metadata:', err);
+        }
+      }
+    }
+  }
 }
 
 /**

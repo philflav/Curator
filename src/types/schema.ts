@@ -22,6 +22,8 @@ export const DEFAULT_SUBCATEGORIES: Record<Category, string[]> = {
     'Chinese',
     'Doulton Lambeth',
     'Japanese',
+    'Ladro',
+    'Lladro',
     'Moorcroft',
     'Oriental',
   ],

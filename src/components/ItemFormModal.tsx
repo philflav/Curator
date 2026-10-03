@@ -363,6 +363,11 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         updatedAt: Date.now(),
       };
 
+      // Ensure subcategory is registered into metadata
+      if (itemData.subcategory && itemData.subcategory.trim()) {
+        await addUserSubcategory(itemData.category, itemData.subcategory.trim()).catch(() => {});
+      }
+
       await onSave(itemData);
       onClose();
     } catch (err) {

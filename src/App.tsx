@@ -7,7 +7,7 @@ import {
   subscribeToSubcategories,
   addUserSubcategory,
   removeUserSubcategory,
-  isCustomSubcategory
+  syncSubcategoriesWithItems
 } from './services/subcategoryService';
 import { 
   fetchAllItems, 
@@ -30,12 +30,11 @@ import { FirebaseModal } from './components/FirebaseModal';
 import { ExportModal } from './components/ExportModal';
 import { VisualSearchModal } from './components/VisualSearchModal';
 import { AIVisionSettingsModal } from './components/AIVisionSettingsModal';
+import { SubcategoryDropdown } from './components/SubcategoryDropdown';
 import { 
   ArrowUpDown, 
   Loader2,
-  RefreshCw,
-  Plus,
-  X
+  RefreshCw
 } from 'lucide-react';
 
 export function App() {
@@ -60,8 +59,6 @@ export function App() {
 
   // Subcategory management state
   const [subcategoryVersion, setSubcategoryVersion] = useState(0);
-  const [isAddingSubcatInline, setIsAddingSubcatInline] = useState(false);
-  const [newInlineSubcatName, setNewInlineSubcatName] = useState('');
 
   // Sync state
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -140,6 +137,12 @@ export function App() {
   const handleSaveItem = async (item: Item) => {
     const isNew = !items.some((i) => i.id === item.id);
     const saved = await persistItem(item);
+
+    // Automatically register any subcategory on the item into database metadata
+    if (saved.subcategory && saved.subcategory.trim()) {
+      addUserSubcategory(saved.category, saved.subcategory.trim()).catch(() => {});
+    }
+
     setItems((prev) => {
       const idx = prev.findIndex((i) => i.id === saved.id);
       if (idx >= 0) {
@@ -174,10 +177,17 @@ export function App() {
     }
   };
 
-  // Available subcategories for currently selected category
+  // Automatically synchronize item subcategories into metadata and Cloud Firestore
+  useEffect(() => {
+    if (items.length > 0) {
+      syncSubcategoriesWithItems(items).catch(() => {});
+    }
+  }, [items]);
+
+  // Available subcategories for currently selected category (including all items tagged with subcategories)
   const availableSubcategories = useMemo(() => {
     if (selectedCategory === 'All') return [];
-    return getSubcategoriesForCategory(selectedCategory as Category);
+    return getSubcategoriesForCategory(selectedCategory as Category, items);
   }, [selectedCategory, items, subcategoryVersion]);
 
   // Filtered & Sorted items
@@ -355,129 +365,24 @@ export function App() {
           </div>
         </div>
 
-        {/* Subcategory Pills Row (shown when a specific category is active) */}
+        {/* Composite Subcategory Dropdown Menu (shown when a specific category is active) */}
         {selectedCategory !== 'All' && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none mb-5 p-2 bg-stone-100/70 border border-stone-200/80 rounded-xl">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded font-semibold whitespace-nowrap">
-              Subcategory:
-            </span>
-            <button
-              onClick={() => setSelectedSubcategory('All')}
-              className={`text-xs px-3 py-1 rounded-full font-medium transition whitespace-nowrap ${
-                selectedSubcategory === 'All'
-                  ? 'bg-amber-800 text-white shadow-xs'
-                  : 'bg-white hover:bg-stone-50 text-stone-700 border border-stone-200'
-              }`}
-            >
-              All {selectedCategory} ({items.filter((i) => i.category === selectedCategory).length})
-            </button>
-            {availableSubcategories.map((subcat) => {
-              const count = items.filter(
-                (i) => i.category === selectedCategory && i.subcategory === subcat
-              ).length;
-              const isCustom = isCustomSubcategory(selectedCategory, subcat);
-              const isSelected = selectedSubcategory === subcat;
-
-              return (
-                <div
-                  key={subcat}
-                  className={`inline-flex items-center text-xs rounded-full font-medium transition whitespace-nowrap ${
-                    isSelected
-                      ? 'bg-amber-800 text-white shadow-xs'
-                      : 'bg-white hover:bg-stone-50 text-stone-700 border border-stone-200'
-                  }`}
-                >
-                  <button
-                    onClick={() => setSelectedSubcategory(subcat)}
-                    className="px-3 py-1 text-xs"
-                  >
-                    {subcat} {count > 0 && <span className={isSelected ? 'text-amber-200' : 'text-stone-400'}>({count})</span>}
-                  </button>
-                  {isCustom && (
-                    <button
-                      type="button"
-                      title={`Delete custom subcategory "${subcat}"`}
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`Delete custom subcategory "${subcat}"?`)) {
-                          await removeUserSubcategory(selectedCategory, subcat);
-                          if (selectedSubcategory === subcat) setSelectedSubcategory('All');
-                          showToast(`Removed subcategory "${subcat}"`);
-                        }
-                      }}
-                      className={`pr-2 pl-0.5 py-1 ${isSelected ? 'text-amber-200 hover:text-white' : 'text-stone-400 hover:text-red-600'}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Inline Add Subcategory */}
-            {isAddingSubcatInline ? (
-              <div className="flex items-center gap-1 bg-white border border-amber-300 rounded-full px-2 py-0.5 shadow-xs">
-                <input
-                  type="text"
-                  autoFocus
-                  value={newInlineSubcatName}
-                  onChange={(e) => setNewInlineSubcatName(e.target.value)}
-                  onKeyDown={async (e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (newInlineSubcatName.trim()) {
-                        await addUserSubcategory(selectedCategory, newInlineSubcatName.trim());
-                        setSelectedSubcategory(newInlineSubcatName.trim());
-                        showToast(`✓ Added subcategory "${newInlineSubcatName.trim()}"`);
-                        setNewInlineSubcatName('');
-                        setIsAddingSubcatInline(false);
-                      }
-                    } else if (e.key === 'Escape') {
-                      setIsAddingSubcatInline(false);
-                      setNewInlineSubcatName('');
-                    }
-                  }}
-                  placeholder="New subcategory..."
-                  className="text-xs bg-transparent outline-none w-28 px-1 text-stone-800"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (newInlineSubcatName.trim()) {
-                      await addUserSubcategory(selectedCategory, newInlineSubcatName.trim());
-                      setSelectedSubcategory(newInlineSubcatName.trim());
-                      showToast(`✓ Added subcategory "${newInlineSubcatName.trim()}"`);
-                      setNewInlineSubcatName('');
-                      setIsAddingSubcatInline(false);
-                    }
-                  }}
-                  className="text-[11px] font-bold text-amber-900 hover:text-amber-950 px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAddingSubcatInline(false);
-                    setNewInlineSubcatName('');
-                  }}
-                  className="text-stone-400 hover:text-stone-600 px-1"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsAddingSubcatInline(true)}
-                className="text-xs px-2.5 py-1 rounded-full font-medium transition whitespace-nowrap bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/90 flex items-center gap-1 shadow-2xs"
-                title={`Add custom subcategory to ${selectedCategory}`}
-              >
-                <Plus className="w-3 h-3 text-amber-800" />
-                <span>Add</span>
-              </button>
-            )}
-          </div>
+          <SubcategoryDropdown
+            category={selectedCategory}
+            selectedSubcategory={selectedSubcategory}
+            onSelectSubcategory={setSelectedSubcategory}
+            availableSubcategories={availableSubcategories}
+            items={items}
+            onAddSubcategory={async (newSubcat) => {
+              await addUserSubcategory(selectedCategory, newSubcat);
+              setSelectedSubcategory(newSubcat);
+              showToast(`✓ Added subcategory "${newSubcat}" to ${selectedCategory}`);
+            }}
+            onRemoveSubcategory={async (subcatToRemove) => {
+              await removeUserSubcategory(selectedCategory, subcatToRemove);
+              showToast(`Removed subcategory "${subcatToRemove}"`);
+            }}
+          />
         )}
 
         {/* Loading Spinner */}
