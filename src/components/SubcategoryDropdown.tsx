@@ -96,7 +96,7 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
 
   const handleDelete = async (e: React.MouseEvent, subcat: string) => {
     e.stopPropagation();
-    if (window.confirm(`Delete custom subcategory "${subcat}"?`)) {
+    if (window.confirm(`Delete subcategory "${subcat}"?`)) {
       await onRemoveSubcategory(subcat);
       if (selectedSubcategory === subcat) {
         onSelectSubcategory('All');
@@ -266,16 +266,14 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
                       }`}>
                         {count}
                       </span>
-                      {isCustom && (
-                        <button
-                          type="button"
-                          title={`Delete custom subcategory "${subcat}"`}
-                          onClick={(e) => handleDelete(e, subcat)}
-                          className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-red-600 p-1 rounded transition"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        title={`Delete subcategory "${subcat}"`}
+                        onClick={(e) => handleDelete(e, subcat)}
+                        className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-red-600 p-1 rounded transition"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                 );

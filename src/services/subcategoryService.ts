@@ -3,6 +3,7 @@ import { initFirebase, isFirebaseConfigured, sanitizeForFirestore } from './fire
 import { doc, getDoc, setDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore';
 
 const STORAGE_KEY = 'curator_custom_subcategories';
+const HIDDEN_STORAGE_KEY = 'curator_hidden_subcategories';
 const METADATA_DOC_PATH = 'categories_and_subcategories';
 
 type SubcategoryListener = () => void;
@@ -49,6 +50,27 @@ export function saveCustomSubcategories(data: Record<string, string[]>): void {
   notifySubcategoryListeners();
 }
 
+export function getHiddenSubcategories(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse hidden subcategories:', e);
+  }
+  return {};
+}
+
+export function saveHiddenSubcategories(data: Record<string, string[]>): void {
+  try {
+    localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save hidden subcategories:', e);
+  }
+  notifySubcategoryListeners();
+}
+
 /**
  * Check if a subcategory was custom-added by the user (as opposed to being a system default).
  */
@@ -59,26 +81,36 @@ export function isCustomSubcategory(category: string, subcategoryName: string): 
 }
 
 /**
- * Get all available subcategories for a given category (defaults + user customized + subcategories on catalog items), sorted alphabetically.
+ * Get all available subcategories for a given category (defaults + user customized + subcategories on catalog items),
+ * excluding any that have been marked as hidden/deleted by the user, sorted alphabetically.
  */
 export function getSubcategoriesForCategory(category: Category | string, currentItems?: Item[]): string[] {
   const defaults = (DEFAULT_SUBCATEGORIES as Record<string, string[]>)[category] || [];
   const customMap = getCustomSubcategories();
   const custom = customMap[category] || [];
+  const hiddenMap = getHiddenSubcategories();
+  const hidden = (hiddenMap[category] || []).map((h) => h.toLowerCase().trim());
 
-  const combined = [...defaults];
+  const combined: string[] = [];
+
+  for (const d of defaults) {
+    if (!hidden.includes(d.toLowerCase()) && !combined.some((item) => item.toLowerCase() === d.toLowerCase())) {
+      combined.push(d);
+    }
+  }
+
   for (const c of custom) {
-    if (!combined.some((item) => item.toLowerCase() === c.toLowerCase())) {
+    if (!hidden.includes(c.toLowerCase()) && !combined.some((item) => item.toLowerCase() === c.toLowerCase())) {
       combined.push(c);
     }
   }
 
-  // Also include any subcategories present on items in this category
+  // Also include any subcategories present on items in this category (if not hidden)
   if (currentItems && Array.isArray(currentItems)) {
     for (const item of currentItems) {
       if (item.category === category && item.subcategory && item.subcategory.trim()) {
         const sub = item.subcategory.trim();
-        if (!combined.some((item) => item.toLowerCase() === sub.toLowerCase())) {
+        if (!hidden.includes(sub.toLowerCase()) && !combined.some((item) => item.toLowerCase() === sub.toLowerCase())) {
           combined.push(sub);
         }
       }
@@ -90,19 +122,23 @@ export function getSubcategoriesForCategory(category: Category | string, current
 
 /**
  * Scans all items and automatically ensures that any subcategory tagged on an item
- * (e.g. "Ladro", "Beswick") is added to the custom subcategories map and synced
- * to Cloud Firestore metadata.
+ * (e.g. "Beswick", "Lladro") is added to the custom subcategories map and synced
+ * to Cloud Firestore metadata, skipping any subcategory that the user explicitly deleted.
  */
 export async function syncSubcategoriesWithItems(items: Item[]): Promise<void> {
   if (!items || !Array.isArray(items) || items.length === 0) return;
 
   const customMap = getCustomSubcategories();
+  const hiddenMap = getHiddenSubcategories();
   let hasNew = false;
 
   for (const item of items) {
     if (!item.category || !item.subcategory || !item.subcategory.trim()) continue;
     const cat = item.category;
     const sub = item.subcategory.trim();
+
+    const hiddenForCat = (hiddenMap[cat] || []).map((h) => h.toLowerCase());
+    if (hiddenForCat.includes(sub.toLowerCase())) continue;
 
     const defaults = (DEFAULT_SUBCATEGORIES as Record<string, string[]>)[cat] || [];
     const existingCustom = customMap[cat] || [];
@@ -126,6 +162,7 @@ export async function syncSubcategoriesWithItems(items: Item[]): Promise<void> {
           const metaRef = doc(db, 'metadata', METADATA_DOC_PATH);
           await setDoc(metaRef, sanitizeForFirestore({
             customSubcategories: customMap,
+            hiddenSubcategories: hiddenMap,
             defaultSubcategories: DEFAULT_SUBCATEGORIES,
             updatedAt: Date.now(),
           }), { merge: true });
@@ -142,17 +179,30 @@ export async function syncSubcategoriesWithItems(items: Item[]): Promise<void> {
  */
 export function getCustomSubcategoriesForCategory(category: Category | string): string[] {
   const customMap = getCustomSubcategories();
-  const list = customMap[category] || [];
+  const hiddenMap = getHiddenSubcategories();
+  const hidden = (hiddenMap[category] || []).map((h) => h.toLowerCase());
+  const list = (customMap[category] || []).filter((c) => !hidden.includes(c.toLowerCase()));
   return [...list].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 /**
  * Add a new user-defined subcategory for a category.
- * Persists locally and automatically synchronizes to Cloud Firestore for cross-client promulgation.
+ * If previously hidden, unhides it.
+ * Persists locally and automatically synchronizes to Cloud Firestore.
  */
 export async function addUserSubcategory(category: Category | string, subcategoryName: string): Promise<string[]> {
   const trimmed = subcategoryName.trim();
   if (!trimmed) return getSubcategoriesForCategory(category);
+
+  // 1. Un-hide if previously hidden
+  const hiddenMap = getHiddenSubcategories();
+  const hiddenForCat = hiddenMap[category] || [];
+  let hiddenChanged = false;
+  if (hiddenForCat.some((h) => h.toLowerCase() === trimmed.toLowerCase())) {
+    hiddenMap[category] = hiddenForCat.filter((h) => h.toLowerCase() !== trimmed.toLowerCase());
+    saveHiddenSubcategories(hiddenMap);
+    hiddenChanged = true;
+  }
 
   const customMap = getCustomSubcategories();
   const existingForCat = customMap[category] || [];
@@ -162,11 +212,14 @@ export async function addUserSubcategory(category: Category | string, subcategor
   const alreadyInDefaults = defaults.some((d) => d.toLowerCase() === trimmed.toLowerCase());
   const alreadyInCustom = existingForCat.some((c) => c.toLowerCase() === trimmed.toLowerCase());
 
+  let customChanged = false;
   if (!alreadyInCustom && !alreadyInDefaults) {
     customMap[category] = [...existingForCat, trimmed];
     saveCustomSubcategories(customMap);
+    customChanged = true;
+  }
 
-    // Sync to Firestore metadata collection
+  if (hiddenChanged || customChanged) {
     if (isFirebaseConfigured()) {
       const { db } = initFirebase();
       if (db) {
@@ -174,6 +227,7 @@ export async function addUserSubcategory(category: Category | string, subcategor
           const metaRef = doc(db, 'metadata', METADATA_DOC_PATH);
           await setDoc(metaRef, sanitizeForFirestore({
             customSubcategories: customMap,
+            hiddenSubcategories: hiddenMap,
             defaultSubcategories: DEFAULT_SUBCATEGORIES,
             updatedAt: Date.now(),
           }), { merge: true });
@@ -188,18 +242,31 @@ export async function addUserSubcategory(category: Category | string, subcategor
 }
 
 /**
- * Remove a custom subcategory (defaults cannot be permanently deleted, but custom ones can).
+ * Remove a subcategory (both custom and defaults).
+ * Marks the subcategory as hidden so it will not reappear from defaults or item syncs.
  * Persists locally and syncs removal to Cloud Firestore.
  */
 export async function removeUserSubcategory(category: Category | string, subcategoryName: string): Promise<string[]> {
+  const trimmed = subcategoryName.trim();
+  if (!trimmed) return getSubcategoriesForCategory(category);
+
+  // 1. Remove from custom subcategories if present
   const customMap = getCustomSubcategories();
   const existingForCat = customMap[category] || [];
   customMap[category] = existingForCat.filter(
-    (c) => c.toLowerCase() !== subcategoryName.trim().toLowerCase()
+    (c) => c.toLowerCase() !== trimmed.toLowerCase()
   );
   saveCustomSubcategories(customMap);
 
-  // Sync update to Firestore
+  // 2. Add to hidden subcategories blacklist
+  const hiddenMap = getHiddenSubcategories();
+  const existingHidden = hiddenMap[category] || [];
+  if (!existingHidden.some((h) => h.toLowerCase() === trimmed.toLowerCase())) {
+    hiddenMap[category] = [...existingHidden, trimmed];
+    saveHiddenSubcategories(hiddenMap);
+  }
+
+  // 3. Sync update to Firestore
   if (isFirebaseConfigured()) {
     const { db } = initFirebase();
     if (db) {
@@ -207,6 +274,7 @@ export async function removeUserSubcategory(category: Category | string, subcate
         const metaRef = doc(db, 'metadata', METADATA_DOC_PATH);
         await setDoc(metaRef, sanitizeForFirestore({
           customSubcategories: customMap,
+          hiddenSubcategories: hiddenMap,
           defaultSubcategories: DEFAULT_SUBCATEGORIES,
           updatedAt: Date.now(),
         }), { merge: true });
@@ -221,7 +289,7 @@ export async function removeUserSubcategory(category: Category | string, subcate
 
 /**
  * Initializes real-time listener for categories and subcategories stored in Firestore.
- * Ensures any categories/subcategories added by another user or session are promulgated in real-time.
+ * Ensures any categories/subcategories added or removed by another user or session are promulgated in real-time.
  */
 export function initSubcategoriesSync(): Unsubscribe | null {
   if (!isFirebaseConfigured()) return null;
@@ -237,6 +305,7 @@ export function initSubcategoriesSync(): Unsubscribe | null {
         setDoc(metaRef, sanitizeForFirestore({
           defaultSubcategories: DEFAULT_SUBCATEGORIES,
           customSubcategories: getCustomSubcategories(),
+          hiddenSubcategories: getHiddenSubcategories(),
           updatedAt: Date.now(),
         }), { merge: true }).catch((e) => console.warn('Could not seed metadata subcategories:', e));
       }
@@ -246,28 +315,58 @@ export function initSubcategoriesSync(): Unsubscribe | null {
     return onSnapshot(metaRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
+        const remoteHidden = data?.hiddenSubcategories || {};
+        const localHidden = getHiddenSubcategories();
+        const mergedHidden: Record<string, string[]> = { ...localHidden };
+        let hiddenChanged = false;
+
+        for (const [cat, rList] of Object.entries(remoteHidden)) {
+          if (Array.isArray(rList)) {
+            const cList = mergedHidden[cat] || [];
+            const combined = [...cList];
+            for (const item of rList) {
+              if (typeof item === 'string' && !combined.some((h) => h.toLowerCase() === item.toLowerCase())) {
+                combined.push(item);
+                hiddenChanged = true;
+              }
+            }
+            mergedHidden[cat] = combined;
+          }
+        }
+
+        if (hiddenChanged) {
+          try {
+            localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(mergedHidden));
+          } catch (e) {
+            console.warn('Failed to update local hidden subcategories from remote snapshot:', e);
+          }
+        }
+
         const remoteCustom = data?.customSubcategories || {};
         const localCustom = getCustomSubcategories();
-
-        // Merge remote custom subcategories into local
         const merged: Record<string, string[]> = { ...localCustom };
-        let hasChanges = false;
+        let customChanged = false;
 
         for (const [cat, remoteList] of Object.entries(remoteCustom)) {
           if (Array.isArray(remoteList)) {
-            const currentList = merged[cat] || [];
+            const catHidden = (mergedHidden[cat] || []).map((h) => h.toLowerCase());
+            const currentList = (merged[cat] || []).filter((c) => !catHidden.includes(c.toLowerCase()));
             const combinedList = [...currentList];
             for (const item of remoteList) {
-              if (typeof item === 'string' && !combinedList.some((c) => c.toLowerCase() === item.toLowerCase())) {
+              if (
+                typeof item === 'string' &&
+                !catHidden.includes(item.toLowerCase()) &&
+                !combinedList.some((c) => c.toLowerCase() === item.toLowerCase())
+              ) {
                 combinedList.push(item);
-                hasChanges = true;
+                customChanged = true;
               }
             }
             merged[cat] = combinedList;
           }
         }
 
-        if (hasChanges) {
+        if (customChanged || hiddenChanged) {
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
             notifySubcategoryListeners();
