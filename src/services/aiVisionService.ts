@@ -308,6 +308,12 @@ export async function enhanceDescriptionWithAI(
 export const NEUTRAL_NO_MARKS_FOUND_NOTE =
   "No legible hallmarks, maker's marks, backstamps, or artist signatures detected in this image. Expected age-appropriate surface wear without identifiable touchmarks.";
 
+export interface MarkResearchResult {
+  notes: string;
+  detectedMarks: string[];
+  periodOrYear?: string;
+}
+
 /**
  * Dedicated research call focusing specifically on marks, hallmarks, signatures, and registries.
  */
@@ -315,7 +321,7 @@ export async function researchMarksWithAI(
   imageDataUrl: string,
   makerOrMarkHint?: string,
   categoryHint?: string
-): Promise<{ notes: string; detectedMarks: string[] }> {
+): Promise<MarkResearchResult> {
   const config = getVisionConfig();
 
   if (!config.apiKey) {
@@ -715,9 +721,11 @@ FOCUS YOUR INSPECTION ON:
 CRITICAL RULES FOR FINDINGS:
 - If authentic, legible marks, signatures, or backstamps are identified:
   * In "detectedMarks": List each specific mark, hallmark punch, signature, or stamp identified (e.g., ["Anchor for Birmingham", "Lion Passant sterling", "Date letter 'k' for 1909", "Maker punch 'W.M' for William Manton"]).
+  * In "periodOrYear": If the mark, hallmark date letter, registration kite/diamond mark, backstamp era, patent, or signature establishes a specific date, year, or date range, provide it here (e.g. "1909", "1891-1914", "c. 1925", "Victorian (1882)", "Meiji Period (c. 1890-1905)"). If the marks do not establish a date or date range, strictly output null.
   * In "notes": Provide authoritative, concise research notes detailing the attributed maker/artist, date or period, assay office, factory history, and collector significance (60-140 words).
 - If NO discernible, legible marks, signatures, stamps, or hallmarks are detected in this image (such as an unmarked base, illegible wear, general surface without markings, or absence of hallmarks):
   * In "detectedMarks": Return strictly an empty array [].
+  * In "periodOrYear": Strictly output null.
   * In "notes": Return strictly this neutral appraisal statement:
     "${NEUTRAL_NO_MARKS_FOUND_NOTE}"
   * Do NOT invent, assume, or hallucinate marks.
@@ -725,10 +733,11 @@ CRITICAL RULES FOR FINDINGS:
 Output valid JSON strictly conforming to this schema:
 {
   "detectedMarks": ["list of specific marks detected; empty array if none found"],
+  "periodOrYear": "Precise year, date, or date range established by the marks (e.g. '1909', '1891-1914', 'c. 1920', 'Victorian (1885)'); null if undetermined",
   "notes": "Research notes on mark attribution and history, or the neutral appraisal statement if none found."
 }`;
 
-function sanitizeMarkResearchResponse(parsed: any): { notes: string; detectedMarks: string[] } {
+function sanitizeMarkResearchResponse(parsed: any): MarkResearchResult {
   const negativeMarkWords = new Set([
     'none', 'n/a', 'na', 'no marks', 'no marks detected', 'no marks found',
     'unmarked', 'unknown', 'none detected', 'not visible', 'none visible',
@@ -763,9 +772,35 @@ function sanitizeMarkResearchResponse(parsed: any): { notes: string; detectedMar
     detectedMarks = [];
   }
 
+  let periodOrYear: string | undefined = undefined;
+  if (!isNoMarksNote && typeof parsed?.periodOrYear === 'string') {
+    const rawPeriod = parsed.periodOrYear.trim();
+    const lowerPeriod = rawPeriod.toLowerCase();
+    if (
+      rawPeriod &&
+      !negativeMarkWords.has(lowerPeriod) &&
+      lowerPeriod !== 'null' &&
+      lowerPeriod !== 'undefined'
+    ) {
+      periodOrYear = rawPeriod;
+    }
+  }
+
+  // Fallback: If not explicitly set in periodOrYear, inspect detectedMarks for hallmark date letters / years
+  if (!periodOrYear && !isNoMarksNote && detectedMarks.length > 0) {
+    for (const mark of detectedMarks) {
+      const match = mark.match(/(?:date\s+letter\s+['"]?[a-z]?['"]?\s+(?:for\s+|in\s+)?|dated\s+|c\.\s*|year\s+)(\d{4}(?:\s*[-–/]\s*\d{2,4})?)/i);
+      if (match && match[1]) {
+        periodOrYear = match[1];
+        break;
+      }
+    }
+  }
+
   return {
     notes,
     detectedMarks,
+    periodOrYear,
   };
 }
 
@@ -774,7 +809,7 @@ async function callGeminiResearchMarks(
   makerOrMarkHint: string | undefined,
   config: VisionConfig,
   categoryHint?: string
-): Promise<{ notes: string; detectedMarks: string[] }> {
+): Promise<MarkResearchResult> {
   const { mimeType, data: base64Data } = await extractBase64AndMime(imageDataUrl);
 
   const contextText = [
@@ -981,7 +1016,7 @@ async function callOpenAIResearchMarks(
   makerOrMarkHint: string | undefined,
   config: VisionConfig,
   categoryHint?: string
-): Promise<{ notes: string; detectedMarks: string[] }> {
+): Promise<MarkResearchResult> {
   let finalImageUrl = imageDataUrl;
   if (!imageDataUrl.startsWith('data:') && !imageDataUrl.startsWith('http')) {
     const { mimeType, data } = await extractBase64AndMime(imageDataUrl);

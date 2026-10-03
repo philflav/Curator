@@ -982,6 +982,9 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           } else {
             setNotes(formattedText);
           }
+          if (results.periodOrYear) {
+            setPeriodOrYear(results.periodOrYear);
+          }
         }}
         onOpenApiKeyPrompt={() => {
           setIsResearchMarksModalOpen(false);

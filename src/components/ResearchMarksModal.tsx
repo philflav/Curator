@@ -3,7 +3,8 @@ import type { Category } from '../types/schema';
 import { 
   researchMarksWithAI, 
   isGeminiKeyConfigured,
-  NEUTRAL_NO_MARKS_FOUND_NOTE 
+  NEUTRAL_NO_MARKS_FOUND_NOTE,
+  type MarkResearchResult 
 } from '../services/aiVisionService';
 import { processImageFile, type ProcessedImage } from '../utils/image';
 import { 
@@ -16,7 +17,8 @@ import {
   Info, 
   FileCheck2,
   RefreshCw,
-  Plus
+  Plus,
+  Calendar
 } from 'lucide-react';
 
 interface ResearchMarksModalProps {
@@ -26,7 +28,7 @@ interface ResearchMarksModalProps {
   makerHint?: string;
   itemTitle?: string;
   onApplyResults: (
-    results: { notes: string; detectedMarks: string[] },
+    results: MarkResearchResult,
     mode: 'append' | 'replace'
   ) => void;
   onOpenApiKeyPrompt?: () => void;
@@ -48,7 +50,7 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
   const [imageStats, setImageStats] = useState<string>('');
   const [hint, setHint] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [results, setResults] = useState<{ notes: string; detectedMarks: string[] } | null>(null);
+  const [results, setResults] = useState<MarkResearchResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Always require a brand new photograph whenever the modal opens
@@ -355,6 +357,20 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
                       </span>
                     ))}
                   </div>
+
+                  {/* Determined Period or Date Range */}
+                  {results.periodOrYear && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200/80 text-xs">
+                      <Calendar className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />
+                      <span className="font-semibold text-amber-900">Determined Period / Year:</span>
+                      <span className="font-mono font-bold text-amber-950 bg-white px-2 py-0.5 rounded border border-amber-300">
+                        {results.periodOrYear}
+                      </span>
+                      <span className="text-[10px] text-amber-700 italic ml-auto hidden sm:inline">
+                        Will update Period/Year field
+                      </span>
+                    </div>
+                  )}
 
                   {/* Research Notes */}
                   <div className="p-3 bg-white rounded-lg border border-emerald-200/70 text-xs leading-relaxed text-stone-800 font-sans">
