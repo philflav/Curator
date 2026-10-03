@@ -14,6 +14,7 @@ import {
   enhanceDescriptionWithAI, 
   researchMarksWithAI,
   isGeminiKeyConfigured,
+  sanitizeModelOrPattern,
   type AnalyzedItemDetails 
 } from '../services/aiVisionService';
 import { AIVisionSettingsModal } from './AIVisionSettingsModal';
@@ -95,7 +96,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setCategory(itemToEdit.category || 'Ceramics & Porcelain');
       setSubcategory(itemToEdit.subcategory || '');
       setMaker(itemToEdit.maker || '');
-      setModelOrPattern(itemToEdit.modelOrPattern || '');
+      setModelOrPattern(sanitizeModelOrPattern(itemToEdit.modelOrPattern) || '');
       setPeriodOrYear(itemToEdit.periodOrYear || '');
       setCondition(itemToEdit.condition || 'Good');
       setConditionNotes(itemToEdit.conditionNotes || '');
@@ -203,7 +204,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         category,
         subcategory,
         maker,
-        modelOrPattern,
+        modelOrPattern: sanitizeModelOrPattern(modelOrPattern),
         periodOrYear,
         condition,
         conditionNotes,
@@ -220,7 +221,12 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       }
       if (result.subcategory) setSubcategory(result.subcategory);
       if (result.maker) setMaker(result.maker);
-      if (result.modelOrPattern) setModelOrPattern(result.modelOrPattern);
+      if (result.modelOrPattern) {
+        const cleanPattern = sanitizeModelOrPattern(result.modelOrPattern);
+        if (cleanPattern) {
+          setModelOrPattern(cleanPattern);
+        }
+      }
       if (result.periodOrYear) setPeriodOrYear(result.periodOrYear);
       if (result.condition) setCondition(result.condition);
       if (result.conditionNotes) setConditionNotes(result.conditionNotes);
@@ -367,7 +373,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         category,
         subcategory: subcategory.trim() || undefined,
         maker: maker.trim() || undefined,
-        modelOrPattern: modelOrPattern.trim() || undefined,
+        modelOrPattern: sanitizeModelOrPattern(modelOrPattern) || undefined,
         periodOrYear: periodOrYear.trim() || undefined,
         condition,
         conditionNotes: conditionNotes.trim() || undefined,
@@ -730,7 +736,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                 type="text"
                 value={modelOrPattern}
                 onChange={(e) => setModelOrPattern(e.target.value)}
-                placeholder="e.g. HN 1315, Blue Fluted"
+                placeholder="Optional (leave blank if unknown)"
                 className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40 font-mono"
               />
             </div>

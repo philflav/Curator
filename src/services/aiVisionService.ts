@@ -371,6 +371,73 @@ function parseJsonFromModelOutput(rawText: string): any {
   return JSON.parse(cleaned.trim());
 }
 
+/**
+ * Ensures that model or pattern fields remain strictly undefined/empty unless
+ * a genuine, meaningful model code or pattern name is provided.
+ * Filters out common AI hallucination placeholders like "None", "N/A", "Unknown",
+ * "Not applicable", "None specified", "Unique", etc.
+ */
+export function sanitizeModelOrPattern(val?: any): string | undefined {
+  if (val === null || val === undefined) return undefined;
+  if (typeof val !== 'string') return undefined;
+
+  const trimmed = val.trim();
+  if (!trimmed) return undefined;
+
+  const lower = trimmed.toLowerCase();
+
+  const exactPlaceholders = new Set([
+    'none',
+    'n/a',
+    'na',
+    'n / a',
+    'unknown',
+    'not applicable',
+    'none specified',
+    'not specified',
+    'unspecified',
+    'unrecorded',
+    'undetermined',
+    'not discernible',
+    'not identified',
+    'unidentified',
+    'no pattern',
+    'none detected',
+    'no model',
+    'no model number',
+    'null',
+    'nil',
+    'undefined',
+    '-',
+    '--',
+    '---',
+    '—',
+    '?',
+    'n.a.',
+    'n/a.',
+    'none visible',
+    'not visible',
+    'unique',
+    'unique piece',
+    'one of a kind',
+    'one-of-a-kind',
+    'custom',
+    'unknown pattern',
+    'unnamed',
+  ]);
+
+  if (exactPlaceholders.has(lower)) {
+    return undefined;
+  }
+
+  // Common phrases AI outputs when it doesn't know the pattern
+  if (/^(none|n\/?a|unknown|unspecified|not applicable|not discernible|none detected|none specified|not specified|undetermined|no pattern|unidentified)\b/i.test(lower)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
 function sanitizeAnalysisResponse(
   parsed: any,
   existingDraft: Partial<Item>
@@ -394,12 +461,14 @@ function sanitizeAnalysisResponse(
     (c) => c.toLowerCase() === (parsed.condition || '').toLowerCase()
   ) || 'Good';
 
+  const cleanedPattern = sanitizeModelOrPattern(parsed.modelOrPattern) || sanitizeModelOrPattern(existingDraft.modelOrPattern);
+
   return {
     title: parsed.title || existingDraft.title || 'Antique Collectible Object',
     category: matchedCategory,
     subcategory: parsed.subcategory || existingDraft.subcategory,
     maker: parsed.maker || existingDraft.maker,
-    modelOrPattern: parsed.modelOrPattern || existingDraft.modelOrPattern,
+    modelOrPattern: cleanedPattern,
     periodOrYear: parsed.periodOrYear || existingDraft.periodOrYear || 'c. 1920',
     condition: matchedCondition,
     conditionNotes: parsed.conditionNotes || 'Expected minor surface wear consistent with age.',
@@ -423,7 +492,7 @@ Generate an appraisal-grade catalog record. Output valid JSON strictly conformin
   "category": "Furniture" | "Ceramics & Porcelain" | "Fine Art" | "Glass" | "Clocks & Watches" | "Metalware" | "Other",
   "subcategory": "e.g. Japanese, Moorcroft, Doulton Lambeth, Bracket Clocks, Art Glass, Silver & Silverplate, etc.",
   "maker": "Identifiable maker, factory, kiln, or attributed school",
-  "modelOrPattern": "Pattern name or model/mold code if discernible",
+  "modelOrPattern": "Specific named pattern or mold/model number if discernible. If not known, unique, or not applicable, strictly output null (do NOT output 'None', 'Unknown', or 'N/A')",
   "periodOrYear": "e.g. c. 1890, c. 1925, Victorian, Meiji Era, George III",
   "condition": "Mint" | "Excellent" | "Good" | "Fair" | "Restored" | "Damaged",
   "conditionNotes": "Specific notes on glaze, patina, chips, hairlines, or expected age wear",
@@ -990,7 +1059,7 @@ Identify which stored item is visually most similar (by maker marks, glaze, form
         matchedFeatures: m.features || [],
         visualAnalysis: m.analysis,
         suggestedMaker: m.suggestedMaker || matched.maker,
-        suggestedPattern: m.suggestedPattern || matched.modelOrPattern,
+        suggestedPattern: sanitizeModelOrPattern(m.suggestedPattern) || sanitizeModelOrPattern(matched.modelOrPattern),
         suggestedPeriod: m.suggestedPeriod || matched.periodOrYear,
       });
     }
@@ -1084,7 +1153,7 @@ async function callOpenAIComparison(
         matchedFeatures: m.features || [],
         visualAnalysis: m.analysis,
         suggestedMaker: m.suggestedMaker || matched.maker,
-        suggestedPattern: m.suggestedPattern || matched.modelOrPattern,
+        suggestedPattern: sanitizeModelOrPattern(m.suggestedPattern) || sanitizeModelOrPattern(matched.modelOrPattern),
         suggestedPeriod: m.suggestedPeriod || matched.periodOrYear,
       });
     }
@@ -1132,7 +1201,7 @@ function generateOfflineVisualComparisons(
       matchedFeatures: features,
       visualAnalysis: analysis,
       suggestedMaker: item.maker,
-      suggestedPattern: item.modelOrPattern,
+      suggestedPattern: sanitizeModelOrPattern(item.modelOrPattern),
       suggestedPeriod: item.periodOrYear,
     });
   });

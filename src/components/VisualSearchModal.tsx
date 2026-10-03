@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import type { Item } from '../types/schema';
 import { 
   compareImageWithStoredItems, 
+  sanitizeModelOrPattern,
   type VisualComparisonResult 
 } from '../services/aiVisionService';
 import { processImageFile } from '../utils/image';
@@ -76,11 +77,12 @@ export const VisualSearchModal: React.FC<VisualSearchModalProps> = ({
 
   const handleApplyToNew = () => {
     if (!currentMatch || !candidateBlob) return;
+    const cleanPattern = sanitizeModelOrPattern(currentMatch.suggestedPattern);
     onUseMatchForNewItem(candidateBlob, candidateImage, {
-      title: `${currentMatch.suggestedMaker || ''} ${currentMatch.suggestedPattern || 'Antique Item'}`.trim(),
+      title: `${currentMatch.suggestedMaker || ''} ${cleanPattern || 'Antique Item'}`.trim(),
       category: currentMatch.matchedItem.category,
       maker: currentMatch.suggestedMaker,
-      modelOrPattern: currentMatch.suggestedPattern,
+      modelOrPattern: cleanPattern,
       periodOrYear: currentMatch.suggestedPeriod,
       notes: `Identified via AI visual comparison with catalog item "${currentMatch.matchedItem.title}". Match score: ${currentMatch.similarityScore}%.`,
     });
