@@ -32,10 +32,12 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAddingNew, setIsAddingNew] = useState(false);
   const [newSubcatName, setNewSubcatName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const newSubcatInputRef = useRef<HTMLInputElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -47,10 +49,23 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
 
     if (isOpen) {
       document.addEventListener('mousedown', handleOutsideClick);
-      // Auto-focus search input when opening
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 50);
+      // Suppress keyboard popup on mobile / touch devices when opening to select a subcategory.
+      // Only autofocus search on desktop devices with a mouse/fine pointer.
+      const isTouch =
+        typeof window !== 'undefined' && (
+          window.matchMedia('(pointer: coarse)').matches ||
+          'ontouchstart' in window ||
+          navigator.maxTouchPoints > 0
+        );
+
+      if (!isTouch) {
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 50);
+      }
+    } else {
+      setIsAddingNew(false);
+      setNewSubcatName('');
     }
 
     return () => {
@@ -62,6 +77,7 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
   useEffect(() => {
     setSearchTerm('');
     setNewSubcatName('');
+    setIsAddingNew(false);
     setIsOpen(false);
   }, [category]);
 
@@ -86,6 +102,7 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
       onSelectSubcategory(trimmed);
       setNewSubcatName('');
       setSearchTerm('');
+      setIsAddingNew(false);
       setIsOpen(false);
     } catch (err) {
       console.error('Failed to add subcategory:', err);
@@ -280,32 +297,76 @@ export const SubcategoryDropdown: React.FC<SubcategoryDropdownProps> = ({
               })
             ) : (
               <div className="p-4 text-center text-xs text-stone-500">
-                No subcategories matching "{searchTerm}".
+                <p>No subcategories matching "{searchTerm}".</p>
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewSubcatName(searchTerm);
+                      setIsAddingNew(true);
+                      setTimeout(() => newSubcatInputRef.current?.focus(), 50);
+                    }}
+                    className="mt-2 text-xs text-amber-800 hover:text-amber-950 font-medium underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add "{searchTerm}" as subcategory</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
 
-          {/* Quick Add Subcategory Footer */}
-          <form
-            onSubmit={handleAdd}
-            className="p-2.5 border-t border-stone-200 bg-stone-50 flex items-center gap-2"
-          >
-            <input
-              type="text"
-              value={newSubcatName}
-              onChange={(e) => setNewSubcatName(e.target.value)}
-              placeholder="Add new subcategory..."
-              className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40 text-stone-800"
-            />
-            <button
-              type="submit"
-              disabled={!newSubcatName.trim() || isSubmitting}
-              className="px-3 py-1.5 bg-amber-800 hover:bg-amber-900 text-white rounded-lg text-xs font-medium flex items-center gap-1 shadow-xs transition disabled:opacity-50 cursor-pointer"
+          {/* Add Subcategory Footer */}
+          {!isAddingNew ? (
+            <div className="p-2 border-t border-stone-200 bg-stone-50">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingNew(true);
+                  setTimeout(() => {
+                    newSubcatInputRef.current?.focus();
+                  }, 50);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg font-medium transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-amber-800" />
+                <span>Add new subcategory</span>
+              </button>
+            </div>
+          ) : (
+            <form
+              onSubmit={handleAdd}
+              className="p-2.5 border-t border-stone-200 bg-stone-50 flex items-center gap-2 animate-in fade-in duration-150"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add</span>
-            </button>
-          </form>
+              <input
+                ref={newSubcatInputRef}
+                type="text"
+                value={newSubcatName}
+                onChange={(e) => setNewSubcatName(e.target.value)}
+                placeholder="Enter subcategory name..."
+                className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40 text-stone-800"
+              />
+              <button
+                type="submit"
+                disabled={!newSubcatName.trim() || isSubmitting}
+                className="px-3 py-1.5 bg-amber-800 hover:bg-amber-900 text-white rounded-lg text-xs font-medium flex items-center gap-1 shadow-xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Save</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingNew(false);
+                  setNewSubcatName('');
+                }}
+                className="p-1.5 text-stone-400 hover:text-stone-600 rounded transition cursor-pointer"
+                title="Cancel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          )}
 
         </div>
       )}
