@@ -61,12 +61,21 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
       setBaseUrl('https://api.openai.com/v1');
       setModel('gpt-4o-mini');
     } else if (newProvider === 'gemini') {
-      setBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai');
+      setBaseUrl('https://generativelanguage.googleapis.com/v1beta');
       setModel('gemini-2.5-flash');
     } else if (newProvider === 'ollama') {
       setBaseUrl('http://localhost:11434/v1');
       setModel('llava');
       setApiKey('');
+    }
+  };
+
+  const handleApiKeyChange = (val: string) => {
+    setApiKey(val);
+    if (val.trim().startsWith('AIzaSy') && provider !== 'gemini') {
+      setProvider('gemini');
+      setBaseUrl('https://generativelanguage.googleapis.com/v1beta');
+      setModel('gemini-2.5-flash');
     }
   };
 
@@ -92,11 +101,22 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
   };
 
   const handleSave = () => {
+    let finalBaseUrl = baseUrl.trim();
+    let finalModel = model.trim();
+    if (provider === 'gemini' || apiKey.trim().startsWith('AIzaSy')) {
+      if (!finalBaseUrl || finalBaseUrl.includes('/openai')) {
+        finalBaseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+      }
+      if (!finalModel || finalModel === 'gpt-4o-mini') {
+        finalModel = 'gemini-2.5-flash';
+      }
+    }
+
     saveVisionConfig({
-      provider,
-      baseUrl: baseUrl.trim(),
+      provider: apiKey.trim().startsWith('AIzaSy') ? 'gemini' : provider,
+      baseUrl: finalBaseUrl,
       apiKey: apiKey.trim(),
-      model: model.trim(),
+      model: finalModel,
     });
     if (onConfigSaved) onConfigSaved();
     onClose();
@@ -238,10 +258,24 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                   <input
                     type={showKey ? 'text' : 'password'}
                     value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder={provider === 'openai' ? 'sk-...' : 'AIzaSy...'}
+                    onChange={(e) => handleApiKeyChange(e.target.value)}
+                    placeholder={provider === 'openai' ? 'sk-...' : provider === 'gemini' ? 'AIzaSy... (from Google AI Studio)' : 'Enter API Key'}
                     className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
                   />
+                  {provider === 'gemini' && (
+                    <p className="mt-1 text-[11px] text-stone-500">
+                      Get a free Gemini API key at{' '}
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-amber-800 underline font-medium hover:text-amber-950"
+                      >
+                        Google AI Studio
+                      </a>{' '}
+                      (Free tier includes high-accuracy multimodal visual appraisals).
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -254,7 +288,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                   type="text"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.openai.com/v1"
+                  placeholder={provider === 'gemini' ? 'https://generativelanguage.googleapis.com/v1beta' : 'https://api.openai.com/v1'}
                   className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
                 />
               </div>
@@ -268,7 +302,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                   type="text"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  placeholder="gpt-4o-mini"
+                  placeholder={provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
                   className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
                 />
               </div>
