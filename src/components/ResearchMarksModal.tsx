@@ -16,14 +16,12 @@ import {
   Info, 
   FileCheck2,
   RefreshCw,
-  Plus,
-  ArrowRight
+  Plus
 } from 'lucide-react';
 
 interface ResearchMarksModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialImage?: string;
   category?: Category;
   makerHint?: string;
   itemTitle?: string;
@@ -37,7 +35,6 @@ interface ResearchMarksModalProps {
 export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
   isOpen,
   onClose,
-  initialImage,
   category,
   makerHint = '',
   itemTitle = '',
@@ -54,16 +51,16 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
   const [results, setResults] = useState<{ notes: string; detectedMarks: string[] } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Sync state whenever modal opens or props change
+  // Always require a brand new photograph whenever the modal opens
   useEffect(() => {
     if (isOpen) {
-      setSelectedImage(initialImage || '');
+      setSelectedImage('');
+      setImageStats('');
       setHint(makerHint || itemTitle || '');
       setResults(null);
       setErrorMessage(null);
-      setImageStats(initialImage ? 'Item primary photo' : '');
     }
-  }, [isOpen, initialImage, makerHint, itemTitle]);
+  }, [isOpen, makerHint, itemTitle]);
 
   if (!isOpen) return null;
 
@@ -178,11 +175,11 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
           {/* Informative Guidance Banner */}
           <div className="p-3.5 bg-amber-50/80 border border-amber-200/70 rounded-xl space-y-2 text-amber-950">
             <div className="flex items-center gap-1.5 font-semibold text-amber-900 text-xs">
-              <Sparkles className="w-4 h-4 text-amber-800" />
-              <span>Recommended Close-ups for Accurate Identification:</span>
+              <Camera className="w-4 h-4 text-amber-800" />
+              <span>A New Photograph of the Mark or Identifier is Required:</span>
             </div>
             <p className="text-[11px] text-stone-600 leading-relaxed">
-              Capture or upload a clear, focused photograph of one of the following distinguishing features:
+              To accurately inspect hallmarks, backstamps, or signatures, please provide a clear, focused new photograph specifically showing:
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
               <div className="bg-white/80 p-2 rounded-lg border border-amber-200/50 flex items-start gap-1.5">
@@ -207,7 +204,7 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
           {/* Image Capture & Upload Section */}
           <div className="space-y-2.5">
             <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold">
-              Mark Photo / Close-up
+              New Mark Photograph (Required)
             </label>
 
             {selectedImage ? (
@@ -215,7 +212,7 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Photo Loaded
+                      New Mark Photo Loaded
                     </span>
                     {imageStats && (
                       <span className="text-[11px] text-stone-400 font-mono">
@@ -227,18 +224,18 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
-                      className="px-2.5 py-1 text-[11px] font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md transition flex items-center gap-1"
+                      className="px-2.5 py-1 text-[11px] font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md transition flex items-center gap-1 cursor-pointer"
                     >
                       <Camera className="w-3.5 h-3.5" />
-                      <span>Retake</span>
+                      <span>Take Different Photo</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-2.5 py-1 text-[11px] font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md transition flex items-center gap-1"
+                      className="px-2.5 py-1 text-[11px] font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md transition flex items-center gap-1 cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Other</span>
+                      <span>Upload Different File</span>
                     </button>
                   </div>
                 </div>
@@ -257,38 +254,23 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
                   <button
                     type="button"
                     onClick={() => cameraInputRef.current?.click()}
-                    className="px-4 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl font-medium text-xs flex items-center gap-2 shadow-xs transition"
+                    className="px-4 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl font-medium text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
                   >
                     <Camera className="w-4 h-4" />
-                    <span>Take Close-up Photo</span>
+                    <span>Take New Photo of Mark</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl font-medium text-xs flex items-center gap-2 transition"
+                    className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl font-medium text-xs flex items-center gap-2 transition cursor-pointer"
                   >
                     <Upload className="w-4 h-4" />
-                    <span>Upload Image File</span>
+                    <span>Upload New Mark Image</span>
                   </button>
                 </div>
-                <p className="text-[11px] text-stone-400">
-                  Select a photo of the base, hallmark, signature, or stamp to begin AI analysis.
+                <p className="text-[11px] text-stone-500">
+                  Please capture or select a focused close-up photo of the mark, base, hallmark, or signature.
                 </p>
-                {initialImage && (
-                  <div className="pt-2 border-t border-stone-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedImage(initialImage);
-                        setImageStats('Using item primary photo');
-                      }}
-                      className="text-xs text-amber-800 hover:text-amber-950 font-medium underline inline-flex items-center gap-1"
-                    >
-                      <span>Or use the item's primary catalog photo</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>

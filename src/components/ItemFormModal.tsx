@@ -964,7 +964,6 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       <ResearchMarksModal
         isOpen={isResearchMarksModalOpen}
         onClose={() => setIsResearchMarksModalOpen(false)}
-        initialImage={imagePreview || undefined}
         category={category}
         makerHint={maker}
         itemTitle={title}
