@@ -35,7 +35,7 @@ export interface AnalyzedItemDetails {
 }
 
 export interface VisionConfig {
-  provider: 'gemini';
+  provider: 'gemini' | 'openai';
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -45,18 +45,30 @@ export interface VisionConfig {
 
 const STORAGE_KEY = 'curator_vision_config';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
 /**
- * Retrieve active Google Gemini vision configuration.
- * Priority: User-entered manual key in localStorage > Environment variable in .env.local
+ * Automatically determine the AI provider based on key signature or configuration.
+ */
+export function detectProvider(apiKey: string, explicitProvider?: string): 'gemini' | 'openai' {
+  const trimmed = (apiKey || '').trim();
+  if (trimmed.startsWith('sk-')) return 'openai';
+  if (trimmed.startsWith('AIza')) return 'gemini';
+  if (explicitProvider === 'openai') return 'openai';
+  return 'gemini';
+}
+
+/**
+ * Retrieve active vision configuration.
+ * Automatically adapts between Google Gemini and OpenAI based on key format.
  */
 export function getVisionConfig(): VisionConfig {
   const envKey = (import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_VISION_API_KEY || '').trim();
-  const envModel = (import.meta.env.VITE_GEMINI_MODEL || import.meta.env.VITE_VISION_MODEL || DEFAULT_MODEL).trim();
+  const envModel = (import.meta.env.VITE_GEMINI_MODEL || import.meta.env.VITE_VISION_MODEL || '').trim();
 
   let localKey = '';
   let localModel = '';
+  let localProvider: 'gemini' | 'openai' | undefined;
   let hasManualKey = false;
 
   try {
@@ -71,6 +83,9 @@ export function getVisionConfig(): VisionConfig {
         if (typeof parsed.model === 'string' && parsed.model.trim().length > 0) {
           localModel = parsed.model.trim();
         }
+        if (parsed.provider === 'gemini' || parsed.provider === 'openai') {
+          localProvider = parsed.provider;
+        }
       }
     }
   } catch (e) {
@@ -78,12 +93,15 @@ export function getVisionConfig(): VisionConfig {
   }
 
   const finalApiKey = localKey || envKey;
-  const finalModel = localModel || envModel || DEFAULT_MODEL;
+  const detected = detectProvider(finalApiKey, localProvider);
+  const defaultModel = detected === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
+  const finalModel = localModel || envModel || defaultModel;
+  const baseUrl = detected === 'openai' ? OPENAI_BASE_URL : GEMINI_BASE_URL;
   const isEnvKey = !hasManualKey && Boolean(envKey);
 
   return {
-    provider: 'gemini',
-    baseUrl: GEMINI_BASE_URL,
+    provider: detected,
+    baseUrl,
     apiKey: finalApiKey,
     model: finalModel,
     isEnvKey,
@@ -92,16 +110,21 @@ export function getVisionConfig(): VisionConfig {
 }
 
 /**
- * Persist user-entered Gemini key and model settings to localStorage.
+ * Persist user-entered key and model settings to localStorage.
  */
-export function saveVisionConfig(config: { apiKey?: string; model?: string }): void {
+export function saveVisionConfig(config: { apiKey?: string; model?: string; provider?: 'gemini' | 'openai' }): void {
   try {
     const current = getVisionConfig();
+    const apiKey = (config.apiKey !== undefined ? config.apiKey : current.apiKey).trim();
+    const provider = detectProvider(apiKey, config.provider || current.provider);
+    const defaultModel = provider === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
+    const model = (config.model !== undefined ? config.model : current.model).trim() || defaultModel;
+
     const toSave = {
-      provider: 'gemini',
-      apiKey: (config.apiKey !== undefined ? config.apiKey : current.apiKey).trim(),
-      model: (config.model !== undefined ? config.model : current.model).trim() || DEFAULT_MODEL,
-      baseUrl: GEMINI_BASE_URL,
+      provider,
+      apiKey,
+      model,
+      baseUrl: provider === 'openai' ? OPENAI_BASE_URL : GEMINI_BASE_URL,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (e) {
@@ -121,7 +144,7 @@ export function clearManualVisionConfig(): void {
 }
 
 /**
- * Check if a valid Google Gemini API key is configured (either via .env.local or manual input).
+ * Check if a valid API key is configured.
  */
 export function isGeminiKeyConfigured(): boolean {
   const config = getVisionConfig();
@@ -129,7 +152,7 @@ export function isGeminiKeyConfigured(): boolean {
 }
 
 /**
- * Test connectivity directly to the Google Gemini API.
+ * Test connectivity directly to the configured AI API (Google Gemini or OpenAI).
  */
 export async function testVisionConnection(customConfig?: Partial<VisionConfig>): Promise<{
   success: boolean;
@@ -138,16 +161,56 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
 }> {
   const current = getVisionConfig();
   const apiKey = (customConfig?.apiKey !== undefined ? customConfig.apiKey : current.apiKey).trim();
-  const model = (customConfig?.model !== undefined ? customConfig.model : current.model).trim() || DEFAULT_MODEL;
+  const provider = detectProvider(apiKey, customConfig?.provider || current.provider);
+  const defaultModel = provider === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
+  const model = (customConfig?.model !== undefined ? customConfig.model : current.model).trim() || defaultModel;
 
   if (!apiKey) {
     return {
       success: false,
-      message: 'Google Gemini API key is missing. Please provide a key in settings or .env.local.',
+      message: 'API key is missing. Please enter your key in settings or .env.local.',
     };
   }
 
   const startTime = Date.now();
+
+  // Test OpenAI Endpoint
+  if (provider === 'openai') {
+    try {
+      const response = await fetch(`${OPENAI_BASE_URL}/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      const latencyMs = Date.now() - startTime;
+      if (response.ok) {
+        return {
+          success: true,
+          message: `Connected to OpenAI (${latencyMs}ms). Model: ${model}`,
+          latencyMs,
+        };
+      }
+
+      const errData = await response.json().catch(() => null);
+      const errMsg = errData?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+      return {
+        success: false,
+        message: `OpenAI authentication failed (${response.status}): ${errMsg}`,
+        latencyMs,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      return {
+        success: false,
+        message: `Connection failed: ${err?.message || err}. Ensure you are online.`,
+        latencyMs,
+      };
+    }
+  }
+
+  // Test Google Gemini Endpoint
   try {
     const endpoint = `${GEMINI_BASE_URL}/models?key=${encodeURIComponent(apiKey)}`;
     const response = await fetch(endpoint, {
@@ -170,7 +233,13 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
     }
 
     const errData = await response.json().catch(() => null);
-    const errMsg = errData?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+    let errMsg = errData?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+
+    // Provide friendly advice if this is a Google Cloud project with disabled Gemini API
+    if (errMsg.includes('SERVICE_DISABLED') || errMsg.includes('has not been used in project') || errMsg.includes('is disabled')) {
+      errMsg = 'This Google key belongs to a project where the Gemini API is disabled. Please generate a free standalone key at https://aistudio.google.com/app/apikey (pre-activated for Gemini) or enable the Gemini API in Google Cloud Console.';
+    }
+
     return {
       success: false,
       message: `Gemini API authentication failed (${response.status}): ${errMsg}`,
@@ -191,8 +260,7 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
 // ---------------------------------------------------------------------------
 
 /**
- * Deeply analyzes an antique/collectible image to auto-complete ALL catalog details:
- * title, category, subcategory, maker, pattern, period, condition, dimensions, valuation, and rich description.
+ * Deeply analyzes an antique/collectible image to auto-complete ALL catalog details.
  */
 export async function analyzeImageAndCompleteDetails(
   imageDataUrl: string,
@@ -204,12 +272,10 @@ export async function analyzeImageAndCompleteDetails(
     throw new Error('GEMINI_API_KEY_REQUIRED');
   }
 
-  try {
-    return await callGeminiVision(imageDataUrl, existingDraft, config);
-  } catch (err: any) {
-    console.error('Google Gemini live appraisal call failed:', err);
-    throw new Error(`Google Gemini Appraisal failed: ${err?.message || err}`);
+  if (config.provider === 'openai') {
+    return callOpenAIVision(imageDataUrl, existingDraft, config);
   }
+  return callGeminiVision(imageDataUrl, existingDraft, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -217,8 +283,7 @@ export async function analyzeImageAndCompleteDetails(
 // ---------------------------------------------------------------------------
 
 /**
- * Dedicated call to elevate, refine, or write an eloquent catalog description
- * based on current item details, existing draft notes, and optional photograph.
+ * Dedicated call to elevate, refine, or write an eloquent catalog description.
  */
 export async function enhanceDescriptionWithAI(
   imageDataUrl: string | undefined,
@@ -230,6 +295,9 @@ export async function enhanceDescriptionWithAI(
     throw new Error('GEMINI_API_KEY_REQUIRED');
   }
 
+  if (config.provider === 'openai') {
+    return callOpenAIEnhanceDescription(imageDataUrl, currentDraft, config);
+  }
   return callGeminiEnhanceDescription(imageDataUrl, currentDraft, config);
 }
 
@@ -238,7 +306,7 @@ export async function enhanceDescriptionWithAI(
 // ---------------------------------------------------------------------------
 
 /**
- * Dedicated research call focusing specifically on marks, hallmarks, backstamps, and registries.
+ * Dedicated research call focusing specifically on marks, hallmarks, and registries.
  */
 export async function researchMarksWithAI(
   imageDataUrl: string,
@@ -250,6 +318,9 @@ export async function researchMarksWithAI(
     throw new Error('GEMINI_API_KEY_REQUIRED');
   }
 
+  if (config.provider === 'openai') {
+    return callOpenAIResearchMarks(imageDataUrl, makerOrMarkHint, config);
+  }
   return callGeminiResearchMarks(imageDataUrl, makerOrMarkHint, config);
 }
 
@@ -265,7 +336,6 @@ async function extractBase64AndMime(imageDataUrl: string): Promise<{ mimeType: s
     }
   }
 
-  // Fetch blob or remote URL and convert to base64
   const response = await fetch(imageDataUrl);
   const blob = await response.blob();
   const mimeType = blob.type || 'image/jpeg';
@@ -367,7 +437,7 @@ Generate an appraisal-grade catalog record. Output valid JSON strictly conformin
 }`;
 
 // ---------------------------------------------------------------------------
-// Google Gemini Native Multimodal API Callers
+// Google Gemini API Callers
 // ---------------------------------------------------------------------------
 
 async function callGeminiVision(
@@ -381,7 +451,7 @@ async function callGeminiVision(
     ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, and write a thorough appraisal description.`
     : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and valuation.`;
 
-  const preferredModel = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const preferredModel = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
   const modelsToTry = [preferredModel];
   if (!modelsToTry.includes('gemini-2.5-flash')) modelsToTry.push('gemini-2.5-flash');
   if (!modelsToTry.includes('gemini-1.5-flash')) modelsToTry.push('gemini-1.5-flash');
@@ -430,6 +500,11 @@ async function callGeminiVision(
           const errJson = JSON.parse(errorText);
           if (errJson?.error?.message) cleanErr = errJson.error.message;
         } catch {}
+
+        if (cleanErr.includes('SERVICE_DISABLED') || cleanErr.includes('has not been used in project')) {
+          cleanErr = 'The Gemini API is disabled for this key project. Get a pre-activated key at https://aistudio.google.com/app/apikey.';
+        }
+
         throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
       }
 
@@ -486,7 +561,7 @@ ${imageDataUrl ? 'Incorporate specific visual characteristics observed in the pr
 OUTPUT FORMAT:
 Return ONLY the description text paragraph(s). Do not include JSON formatting, markdown code fences, or conversational intro.`;
 
-  const model = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
   const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   const parts: any[] = [{ text: promptText }];
@@ -555,7 +630,7 @@ Output valid JSON conforming to this schema:
   "notes": "Detailed research notes on mark attribution, dating range, factory history, and registration diamonds (60-120 words)."
 }`;
 
-  const model = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
   const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   const response = await fetch(endpoint, {
@@ -602,6 +677,208 @@ Output valid JSON conforming to this schema:
 }
 
 // ---------------------------------------------------------------------------
+// OpenAI API Callers
+// ---------------------------------------------------------------------------
+
+async function callOpenAIVision(
+  imageDataUrl: string,
+  existingDraft: Partial<Item>,
+  config: VisionConfig
+): Promise<AnalyzedItemDetails> {
+  let finalImageUrl = imageDataUrl;
+  if (!imageDataUrl.startsWith('data:') && !imageDataUrl.startsWith('http://') && !imageDataUrl.startsWith('https://')) {
+    const { mimeType, data } = await extractBase64AndMime(imageDataUrl);
+    finalImageUrl = `data:${mimeType};base64,${data}`;
+  }
+
+  const userPromptText = existingDraft.title || existingDraft.category
+    ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, and write a thorough appraisal description.`
+    : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and valuation.`;
+
+  const baseUrl = (config.baseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
+  const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model || 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: APPRAISAL_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: userPromptText },
+            {
+              type: 'image_url',
+              image_url: { url: finalImageUrl },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let cleanErr = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      if (errJson?.error?.message) cleanErr = errJson.error.message;
+    } catch {}
+    throw new Error(`OpenAI API error (${response.status}): ${cleanErr}`);
+  }
+
+  const data = await response.json();
+  const rawContent = data.choices?.[0]?.message?.content;
+  if (!rawContent) {
+    throw new Error('Empty response received from OpenAI vision model');
+  }
+
+  const parsed = parseJsonFromModelOutput(rawContent);
+  return sanitizeAnalysisResponse(parsed, existingDraft);
+}
+
+async function callOpenAIEnhanceDescription(
+  imageDataUrl: string | undefined,
+  currentDraft: Partial<Item>,
+  config: VisionConfig
+): Promise<string> {
+  let finalImageUrl: string | undefined;
+  if (imageDataUrl && (imageDataUrl.startsWith('data:') || imageDataUrl.startsWith('http'))) {
+    finalImageUrl = imageDataUrl;
+  } else if (imageDataUrl) {
+    try {
+      const { mimeType, data } = await extractBase64AndMime(imageDataUrl);
+      finalImageUrl = `data:${mimeType};base64,${data}`;
+    } catch {}
+  }
+
+  const promptText = `You are a specialist antique cataloguer, curator, and decorative arts historian.
+The collector has provided the following item information:
+- Title: "${currentDraft.title || 'Untitled Antique'}"
+- Category: "${currentDraft.category || 'Decorative Art'}" ${currentDraft.subcategory ? `(${currentDraft.subcategory})` : ''}
+- Maker / Factory: "${currentDraft.maker || 'Unattributed / Artisan Studio'}"
+- Pattern or Model: "${currentDraft.modelOrPattern || 'None specified'}"
+- Period / Date: "${currentDraft.periodOrYear || 'Historical period'}"
+- Condition: "${currentDraft.condition || 'Good'}" ${currentDraft.conditionNotes ? `(${currentDraft.conditionNotes})` : ''}
+- Hallmarks / Mark Notes: "${currentDraft.notes || 'None recorded'}"
+- Current Draft Description (if any): "${currentDraft.description || ''}"
+
+TASK:
+Write an eloquent, museum-grade descriptive catalog entry (1 to 2 engaging paragraphs, 110-180 words) describing the piece.
+Focus on form, styling, materials, aesthetic significance, and decorative techniques.
+${currentDraft.description ? 'Refine, elevate, and expand upon the collector’s existing description draft rather than replacing it with something generic.' : 'Produce an authentic, comprehensive appraisal-quality catalog description.'}
+${finalImageUrl ? 'Incorporate specific visual characteristics observed in the provided photograph (glaze, patina, form, decoration).' : ''}
+
+OUTPUT FORMAT:
+Return ONLY the description text paragraph(s). Do not include JSON formatting, markdown code fences, or conversational intro.`;
+
+  const baseUrl = (config.baseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
+  const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+
+  const contentParts: any[] = [{ type: 'text', text: promptText }];
+  if (finalImageUrl) {
+    contentParts.push({ type: 'image_url', image_url: { url: finalImageUrl } });
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model || 'gpt-4o-mini',
+      messages: [{ role: 'user', content: contentParts }],
+      temperature: 0.35,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let cleanErr = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      if (errJson?.error?.message) cleanErr = errJson.error.message;
+    } catch {}
+    throw new Error(`OpenAI Description API error (${response.status}): ${cleanErr}`);
+  }
+
+  const data = await response.json();
+  const rawText = data.choices?.[0]?.message?.content || '';
+  if (!rawText.trim()) {
+    throw new Error('Empty response received from OpenAI for description enhancement');
+  }
+
+  return rawText.trim();
+}
+
+async function callOpenAIResearchMarks(
+  imageDataUrl: string,
+  makerOrMarkHint: string | undefined,
+  config: VisionConfig
+): Promise<{ notes: string; detectedMarks: string[] }> {
+  let finalImageUrl = imageDataUrl;
+  if (!imageDataUrl.startsWith('data:') && !imageDataUrl.startsWith('http')) {
+    const { mimeType, data } = await extractBase64AndMime(imageDataUrl);
+    finalImageUrl = `data:${mimeType};base64,${data}`;
+  }
+
+  const prompt = `You are an expert specialist in antique hallmarks, maker marks, backstamps, ceramic factory registries, and touchmarks.
+Analyze this image focusing specifically on identifying the maker's mark, hallmark, signature, patent registry mark, or factory backstamp.
+${makerOrMarkHint ? `Collector hint: "${makerOrMarkHint}"` : ''}
+
+Output valid JSON conforming to this schema:
+{
+  "detectedMarks": ["list of specific marks detected, e.g. 'Anchor for Birmingham', 'Lion Passant sterling', 'Moorcroft impressed script'"],
+  "notes": "Detailed research notes on mark attribution, dating range, factory history, and registration diamonds (60-120 words)."
+}`;
+
+  const baseUrl = (config.baseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
+  const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model || 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: finalImageUrl } },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI Mark Research error: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const rawContent = data.choices?.[0]?.message?.content || '{}';
+  const parsed = parseJsonFromModelOutput(rawContent);
+
+  return {
+    notes: parsed.notes || 'Visual hallmark inspection completed.',
+    detectedMarks: Array.isArray(parsed.detectedMarks) ? parsed.detectedMarks : ['Mark inspected'],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Visual Search Comparison Engine
 // ---------------------------------------------------------------------------
 
@@ -618,6 +895,9 @@ export async function compareImageWithStoredItems(
 
   if (config.apiKey) {
     try {
+      if (config.provider === 'openai') {
+        return await callOpenAIComparison(newImageDataUrl, validItemsWithImages, config);
+      }
       return await callGeminiComparison(newImageDataUrl, validItemsWithImages, config);
     } catch (err) {
       console.warn('Remote vision comparison failed, falling back to local analysis:', err);
@@ -660,7 +940,7 @@ Identify which stored item is visually most similar (by maker marks, glaze, form
   ]
 }`;
 
-  const model = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
   const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   const response = await fetch(endpoint, {
@@ -698,6 +978,100 @@ Identify which stored item is visually most similar (by maker marks, glaze, form
 
   const data = await response.json();
   const rawContent = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
+  const parsed = parseJsonFromModelOutput(rawContent);
+
+  const results: VisualComparisonResult[] = [];
+  for (const m of parsed.matches || []) {
+    const matched = storedItems.find((i) => i.id === m.id);
+    if (matched) {
+      results.push({
+        matchedItem: matched,
+        similarityScore: m.score,
+        matchedFeatures: m.features || [],
+        visualAnalysis: m.analysis,
+        suggestedMaker: m.suggestedMaker || matched.maker,
+        suggestedPattern: m.suggestedPattern || matched.modelOrPattern,
+        suggestedPeriod: m.suggestedPeriod || matched.periodOrYear,
+      });
+    }
+  }
+
+  return results.length > 0 ? results : generateOfflineVisualComparisons(newImageDataUrl, storedItems);
+}
+
+async function callOpenAIComparison(
+  newImageDataUrl: string,
+  storedItems: Item[],
+  config: VisionConfig
+): Promise<VisualComparisonResult[]> {
+  let finalImageUrl = newImageDataUrl;
+  if (!newImageDataUrl.startsWith('data:') && !newImageDataUrl.startsWith('http')) {
+    const { mimeType, data } = await extractBase64AndMime(newImageDataUrl);
+    finalImageUrl = `data:${mimeType};base64,${data}`;
+  }
+
+  const itemsContext = storedItems.slice(0, 8).map((item) => ({
+    id: item.id,
+    title: item.title,
+    maker: item.maker,
+    pattern: item.modelOrPattern,
+    period: item.periodOrYear,
+    category: item.category,
+    image: item.primaryImageUrl,
+  }));
+
+  const systemPrompt = `You are a specialist antique visual appraiser. Compare the user's provided target photograph with the catalog items. Identify which stored item is visually most similar (by maker marks, glaze, form, style, or silhouette). Output JSON format:
+{
+  "matches": [
+    {
+      "id": string,
+      "score": number, // 0 to 100
+      "features": string[],
+      "analysis": string,
+      "suggestedMaker": string,
+      "suggestedPattern": string,
+      "suggestedPeriod": string
+    }
+  ]
+}`;
+
+  const baseUrl = (config.baseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
+  const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model || 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Target Image to compare against candidate stored items: ${JSON.stringify(itemsContext)}. Return the top visual matches.`,
+            },
+            {
+              type: 'image_url',
+              image_url: { url: finalImageUrl },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Vision API error: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const rawContent = data.choices?.[0]?.message?.content || '{}';
   const parsed = parseJsonFromModelOutput(rawContent);
 
   const results: VisualComparisonResult[] = [];

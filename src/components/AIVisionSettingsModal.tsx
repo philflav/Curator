@@ -103,10 +103,10 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-serif font-bold text-stone-900">
-                Google Gemini Settings
+                AI Appraisal Settings
               </h2>
               <p className="text-xs text-stone-500">
-                AI visual intelligence for object appraisal, hallmarks, & descriptions
+                Visual intelligence via Google Gemini (Free tier) or OpenAI
               </p>
             </div>
           </div>
@@ -155,28 +155,46 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold flex items-center gap-1.5">
                   <Key className="w-3.5 h-3.5 text-stone-400" />
-                  Google Gemini API Key
+                  API Key
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="text-[11px] text-stone-500 hover:text-stone-800"
-                >
-                  {showKey ? 'Hide Key' : 'Show Key'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {apiKey.trim().startsWith('sk-') && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-100 text-blue-850 font-semibold border border-blue-200">
+                      OpenAI Detected
+                    </span>
+                  )}
+                  {apiKey.trim().startsWith('AIza') && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-100 text-emerald-850 font-semibold border border-emerald-200">
+                      Google Gemini Detected
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(!showKey)}
+                    className="text-[11px] text-stone-500 hover:text-stone-800"
+                  >
+                    {showKey ? 'Hide Key' : 'Show Key'}
+                  </button>
+                </div>
               </div>
               <input
                 type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => {
-                  setApiKey(e.target.value);
+                  const val = e.target.value;
+                  setApiKey(val);
                   setHasManualKey(true);
+                  if (val.trim().startsWith('sk-') && (model === 'gemini-2.5-flash' || !model)) {
+                    setModel('gpt-4o-mini');
+                  } else if (val.trim().startsWith('AIza') && (model === 'gpt-4o-mini' || !model)) {
+                    setModel('gemini-2.5-flash');
+                  }
                 }}
-                placeholder="AIzaSy... (from Google AI Studio)"
+                placeholder="Google Gemini (AIzaSy...) or OpenAI (sk-...)"
                 className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
               />
               <p className="mt-1.5 text-[11px] text-stone-500 flex items-center gap-1">
-                <span>Free forever tier available at</span>
+                <span>Free tier available at</span>
                 <a
                   href="https://aistudio.google.com/app/apikey"
                   target="_blank"
@@ -185,6 +203,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                 >
                   Google AI Studio <ExternalLink className="w-2.5 h-2.5" />
                 </a>
+                <span>or OpenAI Platform</span>
               </p>
             </div>
 
@@ -197,11 +216,11 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="gemini-2.5-flash"
+                placeholder={apiKey.trim().startsWith('sk-') ? 'gpt-4o-mini' : 'gemini-2.5-flash'}
                 className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
               />
               <p className="mt-1 text-[11px] text-stone-400">
-                Recommended: <code className="font-mono text-stone-600">gemini-2.5-flash</code> (fast, accurate multimodal appraisal)
+                Recommended: <code className="font-mono text-stone-600">{apiKey.trim().startsWith('sk-') ? 'gpt-4o-mini' : 'gemini-2.5-flash'}</code>
               </p>
             </div>
           </div>
