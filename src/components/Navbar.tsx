@@ -274,7 +274,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onOpenAiSettings}
                 className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 rounded-lg border border-stone-200 bg-white transition"
-                title="AI Vision & Appraisal Settings"
+                title="Google Gemini AI Settings"
               >
                 <Sparkles className="w-4 h-4 text-amber-700" />
               </button>

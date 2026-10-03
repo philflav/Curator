@@ -6,13 +6,15 @@ import {
   AlertCircle, 
   Activity, 
   Key, 
-  Globe, 
   Cpu, 
-  HelpCircle 
+  ExternalLink,
+  RotateCcw,
+  Info
 } from 'lucide-react';
 import { 
   getVisionConfig, 
   saveVisionConfig, 
+  clearManualVisionConfig,
   testVisionConnection, 
   type VisionConfig 
 } from '../services/aiVisionService';
@@ -28,64 +30,32 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
   onClose,
   onConfigSaved,
 }) => {
-  const [provider, setProvider] = useState<VisionConfig['provider']>('builtin');
   const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
-  const [model, setModel] = useState('');
+  const [model, setModel] = useState('gemini-2.5-flash');
+  const [isEnvKey, setIsEnvKey] = useState(false);
+  const [hasManualKey, setHasManualKey] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      const cfg = getVisionConfig();
-      setProvider(cfg.provider);
+      const cfg: VisionConfig = getVisionConfig();
       setApiKey(cfg.apiKey);
-      setBaseUrl(cfg.baseUrl);
-      setModel(cfg.model);
+      setModel(cfg.model || 'gemini-2.5-flash');
+      setIsEnvKey(Boolean(cfg.isEnvKey));
+      setHasManualKey(Boolean(cfg.hasManualKey));
       setTestResult(null);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleProviderSelect = (newProvider: VisionConfig['provider']) => {
-    setProvider(newProvider);
-    setTestResult(null);
-
-    if (newProvider === 'builtin') {
-      setBaseUrl('http://localhost:11434/v1');
-      setModel('builtin-appraiser');
-      setApiKey('');
-    } else if (newProvider === 'openai') {
-      setBaseUrl('https://api.openai.com/v1');
-      setModel('gpt-4o-mini');
-    } else if (newProvider === 'gemini') {
-      setBaseUrl('https://generativelanguage.googleapis.com/v1beta');
-      setModel('gemini-2.5-flash');
-    } else if (newProvider === 'ollama') {
-      setBaseUrl('http://localhost:11434/v1');
-      setModel('llava');
-      setApiKey('');
-    }
-  };
-
-  const handleApiKeyChange = (val: string) => {
-    setApiKey(val);
-    if (val.trim().startsWith('AIzaSy') && provider !== 'gemini') {
-      setProvider('gemini');
-      setBaseUrl('https://generativelanguage.googleapis.com/v1beta');
-      setModel('gemini-2.5-flash');
-    }
-  };
-
   const handleTest = async () => {
     setIsTesting(true);
     setTestResult(null);
     try {
       const result = await testVisionConnection({
-        provider,
-        baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim(),
         model: model.trim(),
       });
@@ -101,29 +71,22 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
   };
 
   const handleSave = () => {
-    let finalBaseUrl = baseUrl.trim();
-    let finalModel = model.trim();
-    if (provider === 'gemini' || apiKey.trim().startsWith('AIzaSy')) {
-      if (!finalBaseUrl || finalBaseUrl.includes('/openai')) {
-        finalBaseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-      }
-      if (!finalModel || finalModel === 'gpt-4o-mini') {
-        finalModel = 'gemini-2.5-flash';
-      }
-    }
-
     saveVisionConfig({
-      provider: apiKey.trim().startsWith('AIzaSy') ? 'gemini' : provider,
-      baseUrl: finalBaseUrl,
       apiKey: apiKey.trim(),
-      model: finalModel,
+      model: model.trim() || 'gemini-2.5-flash',
     });
     if (onConfigSaved) onConfigSaved();
     onClose();
   };
 
-  const handleResetToBuiltin = () => {
-    handleProviderSelect('builtin');
+  const handleRestoreEnvKey = () => {
+    clearManualVisionConfig();
+    const cfg = getVisionConfig();
+    setApiKey(cfg.apiKey);
+    setModel(cfg.model || 'gemini-2.5-flash');
+    setIsEnvKey(Boolean(cfg.isEnvKey));
+    setHasManualKey(false);
+    setTestResult(null);
   };
 
   return (
@@ -140,10 +103,10 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-serif font-bold text-stone-900">
-                AI Appraisal Vision Settings
+                Google Gemini Settings
               </h2>
               <p className="text-xs text-stone-500">
-                Configure multimodal model for automatic backstamp & object appraisal
+                AI visual intelligence for object appraisal, hallmarks, & descriptions
               </p>
             </div>
           </div>
@@ -157,157 +120,91 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Provider Selection */}
-          <div>
-            <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-2">
-              Vision Intelligence Provider
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleProviderSelect('builtin')}
-                className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
-                  provider === 'builtin'
-                    ? 'border-amber-700 bg-amber-50/80 shadow-xs ring-1 ring-amber-700'
-                    : 'border-stone-200 bg-white hover:bg-stone-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-stone-900">Built-in Appraiser</span>
-                  {provider === 'builtin' && <Check className="w-3.5 h-3.5 text-amber-800" />}
-                </div>
-                <span className="text-[11px] text-stone-500">
-                  Zero setup • Works 100% offline
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleProviderSelect('openai')}
-                className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
-                  provider === 'openai'
-                    ? 'border-amber-700 bg-amber-50/80 shadow-xs ring-1 ring-amber-700'
-                    : 'border-stone-200 bg-white hover:bg-stone-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-stone-900">OpenAI Vision</span>
-                  {provider === 'openai' && <Check className="w-3.5 h-3.5 text-amber-800" />}
-                </div>
-                <span className="text-[11px] text-stone-500">
-                  GPT-4o / GPT-4o-mini
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleProviderSelect('gemini')}
-                className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
-                  provider === 'gemini'
-                    ? 'border-amber-700 bg-amber-50/80 shadow-xs ring-1 ring-amber-700'
-                    : 'border-stone-200 bg-white hover:bg-stone-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-stone-900">Google Gemini</span>
-                  {provider === 'gemini' && <Check className="w-3.5 h-3.5 text-amber-800" />}
-                </div>
-                <span className="text-[11px] text-stone-500">
-                  Gemini 2.5 Flash / Lite
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleProviderSelect('ollama')}
-                className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
-                  provider === 'ollama'
-                    ? 'border-amber-700 bg-amber-50/80 shadow-xs ring-1 ring-amber-700'
-                    : 'border-stone-200 bg-white hover:bg-stone-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-stone-900">Local Ollama</span>
-                  {provider === 'ollama' && <Check className="w-3.5 h-3.5 text-amber-800" />}
-                </div>
-                <span className="text-[11px] text-stone-500">
-                  Local LLaVA / Moondream
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Configuration Inputs for Non-Builtin */}
-          {provider !== 'builtin' && (
-            <div className="space-y-3 p-4 bg-white rounded-xl border border-stone-200">
-              {provider !== 'ollama' && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-stone-400" />
-                      API Key
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowKey(!showKey)}
-                      className="text-[10px] text-stone-500 hover:text-stone-800"
-                    >
-                      {showKey ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  <input
-                    type={showKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={(e) => handleApiKeyChange(e.target.value)}
-                    placeholder={provider === 'openai' ? 'sk-...' : provider === 'gemini' ? 'AIzaSy... (from Google AI Studio)' : 'Enter API Key'}
-                    className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
-                  />
-                  {provider === 'gemini' && (
-                    <p className="mt-1 text-[11px] text-stone-500">
-                      Get a free Gemini API key at{' '}
-                      <a
-                        href="https://aistudio.google.com/app/apikey"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-amber-800 underline font-medium hover:text-amber-950"
-                      >
-                        Google AI Studio
-                      </a>{' '}
-                      (Free tier includes high-accuracy multimodal visual appraisals).
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1 flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-stone-400" />
-                  Base Endpoint URL
-                </label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder={provider === 'gemini' ? 'https://generativelanguage.googleapis.com/v1beta' : 'https://api.openai.com/v1'}
-                  className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
-                />
+          {/* Key Source Indicator */}
+          {isEnvKey && !hasManualKey && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>Loaded from <code className="font-mono text-[11px] bg-emerald-100 px-1 py-0.5 rounded">.env.local</code> file</span>
               </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1 flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 text-stone-400" />
-                  Model Identifier
-                </label>
-                <input
-                  type="text"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder={provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
-                  className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
-                />
-              </div>
+              <span className="text-[11px] text-emerald-700 font-medium">Active</span>
             </div>
           )}
+
+          {hasManualKey && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                <span>Using manual browser key override</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRestoreEnvKey}
+                className="text-[11px] text-amber-800 hover:text-amber-950 underline font-medium flex items-center gap-1"
+                title="Restore key loaded from .env.local"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Restore .env.local
+              </button>
+            </div>
+          )}
+
+          {/* Configuration Inputs */}
+          <div className="space-y-4 p-4 bg-white rounded-xl border border-stone-200 shadow-2xs">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-stone-400" />
+                  Google Gemini API Key
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="text-[11px] text-stone-500 hover:text-stone-800"
+                >
+                  {showKey ? 'Hide Key' : 'Show Key'}
+                </button>
+              </div>
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setHasManualKey(true);
+                }}
+                placeholder="AIzaSy... (from Google AI Studio)"
+                className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
+              />
+              <p className="mt-1.5 text-[11px] text-stone-500 flex items-center gap-1">
+                <span>Free forever tier available at</span>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-amber-800 underline font-medium hover:text-amber-950 inline-flex items-center gap-0.5"
+                >
+                  Google AI Studio <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1 flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-stone-400" />
+                Model Identifier
+              </label>
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="gemini-2.5-flash"
+                className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
+              />
+              <p className="mt-1 text-[11px] text-stone-400">
+                Recommended: <code className="font-mono text-stone-600">gemini-2.5-flash</code> (fast, accurate multimodal appraisal)
+              </p>
+            </div>
+          </div>
 
           {/* Test Status Feedback */}
           {testResult && (
@@ -334,9 +231,9 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
 
           {/* Information box */}
           <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 text-xs text-amber-950 flex items-start gap-2.5">
-            <HelpCircle className="w-4 h-4 text-amber-800 flex-shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-amber-800 flex-shrink-0 mt-0.5" />
             <div className="text-[11px] leading-relaxed">
-              <strong>Offline-First Design:</strong> If no external API key is entered or the network is offline, Curator automatically uses the built-in collector knowledge base to appraise objects, hallmarks, and write museum-quality descriptions.
+              <strong>Persistence & Security:</strong> Keys entered here are stored locally in your browser's secure offline storage. You can also specify <code className="font-mono">VITE_GEMINI_API_KEY</code> in <code className="font-mono">.env.local</code> for automatic deployment.
             </div>
           </div>
         </div>
@@ -356,10 +253,10 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleResetToBuiltin}
+              onClick={onClose}
               className="px-3 py-1.5 text-xs text-stone-500 hover:text-stone-800 font-medium"
             >
-              Reset to Default
+              Cancel
             </button>
             <button
               type="button"

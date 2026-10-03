@@ -13,9 +13,11 @@ import {
   analyzeImageAndCompleteDetails, 
   enhanceDescriptionWithAI, 
   researchMarksWithAI,
+  isGeminiKeyConfigured,
   type AnalyzedItemDetails 
 } from '../services/aiVisionService';
 import { AIVisionSettingsModal } from './AIVisionSettingsModal';
+import { GeminiApiKeyPromptModal } from './GeminiApiKeyPromptModal';
 import { 
   X, 
   Upload, 
@@ -52,6 +54,8 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const [aiSuccessBanner, setAiSuccessBanner] = useState<{ confidence: number; detectedMarks: string[] } | null>(null);
   const [backupFormData, setBackupFormData] = useState<any>(null);
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [isApiKeyPromptOpen, setIsApiKeyPromptOpen] = useState(false);
+  const [apiKeyPromptFeature, setApiKeyPromptFeature] = useState('AI Visual Appraisal');
   const [isEnhancingDescription, setIsEnhancingDescription] = useState(false);
   const [isResearchingMarks, setIsResearchingMarks] = useState(false);
 
@@ -164,6 +168,12 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       return;
     }
 
+    if (!isGeminiKeyConfigured()) {
+      setApiKeyPromptFeature('AI Auto-Complete Details');
+      setIsApiKeyPromptOpen(true);
+      return;
+    }
+
     // Backup current state to enable Undo
     setBackupFormData({
       title,
@@ -229,7 +239,12 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       });
     } catch (err: any) {
       console.error('AI Appraisal failed:', err);
-      alert(`AI Analysis failed: ${err?.message || err}`);
+      if (err?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
+        setApiKeyPromptFeature('AI Auto-Complete Details');
+        setIsApiKeyPromptOpen(true);
+      } else {
+        alert(`AI Analysis failed: ${err?.message || err}`);
+      }
     } finally {
       setIsAnalyzingAi(false);
     }
@@ -258,13 +273,20 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   };
 
   const handleEnhanceDescription = async () => {
-    if (!imagePreview && !title) {
-      alert('Please upload an image or provide a title first.');
+    if (!imagePreview && !title && !description) {
+      alert('Please upload an image, enter an item title, or provide some initial notes first.');
       return;
     }
+
+    if (!isGeminiKeyConfigured()) {
+      setApiKeyPromptFeature('Polish & Expand Description');
+      setIsApiKeyPromptOpen(true);
+      return;
+    }
+
     setIsEnhancingDescription(true);
     try {
-      const enhanced = await enhanceDescriptionWithAI(imagePreview || '', {
+      const enhanced = await enhanceDescriptionWithAI(imagePreview || undefined, {
         title,
         category,
         subcategory,
@@ -272,12 +294,19 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         modelOrPattern,
         periodOrYear,
         condition,
+        conditionNotes,
         description,
+        notes,
       });
       setDescription(enhanced);
     } catch (err: any) {
       console.error('Enhance description failed:', err);
-      alert(`Could not enhance description: ${err?.message || err}`);
+      if (err?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
+        setApiKeyPromptFeature('Polish & Expand Description');
+        setIsApiKeyPromptOpen(true);
+      } else {
+        alert(`Could not polish description: ${err?.message || err}`);
+      }
     } finally {
       setIsEnhancingDescription(false);
     }
@@ -288,13 +317,28 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       alert('Please upload an image or provide a maker/mark name.');
       return;
     }
+
+    if (!isGeminiKeyConfigured()) {
+      setApiKeyPromptFeature('Research Marks with AI');
+      setIsApiKeyPromptOpen(true);
+      return;
+    }
+
     setIsResearchingMarks(true);
     try {
       const research = await researchMarksWithAI(imagePreview || '', maker || title);
-      setNotes((prev) => prev ? `${prev}\n\n[Research Notes]: ${research.notes}` : research.notes);
+      const markNotes = research.detectedMarks?.length
+        ? `[Marks Detected: ${research.detectedMarks.join(', ')}]\n${research.notes}`
+        : research.notes;
+      setNotes((prev) => prev ? `${prev}\n\n${markNotes}` : markNotes);
     } catch (err: any) {
       console.error('Research marks failed:', err);
-      alert(`Could not research marks: ${err?.message || err}`);
+      if (err?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
+        setApiKeyPromptFeature('Research Marks with AI');
+        setIsApiKeyPromptOpen(true);
+      } else {
+        alert(`Could not research marks: ${err?.message || err}`);
+      }
     } finally {
       setIsResearchingMarks(false);
     }
@@ -447,17 +491,17 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       onClick={handleAiAnalyzeImage}
                       disabled={isAnalyzingAi}
                       className="px-3.5 py-1.5 bg-gradient-to-r from-amber-800 to-stone-900 hover:from-amber-900 hover:to-stone-950 text-amber-100 rounded-lg font-medium text-xs shadow-xs flex items-center gap-1.5 transition hover:scale-[1.01] disabled:opacity-60"
-                      title="Analyze this photograph using AI to auto-complete title, maker, period, valuation, and description"
+                      title="Analyze this photograph using Google Gemini to auto-complete all fields (title, category, maker, period, condition, valuation, dimensions, and description)"
                     >
                       {isAnalyzingAi ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
-                          <span>AI Appraising Object & Backstamp...</span>
+                          <span>Gemini Analyzing Object & Marks...</span>
                         </>
                       ) : (
                         <>
                           <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                          <span>AI Auto-Complete Details</span>
+                          <span>Auto-Complete All Fields</span>
                         </>
                       )}
                     </button>
@@ -465,14 +509,14 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       type="button"
                       onClick={() => setIsAiSettingsOpen(true)}
                       className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 rounded-lg border border-stone-300 bg-white transition"
-                      title="AI Appraisal Vision Settings"
+                      title="Google Gemini AI Settings"
                     >
                       <Settings className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ) : (
                   <p className="text-[11px] text-stone-500">
-                    Images are client-side optimized before storage. Once uploaded, you can use AI to auto-complete details.
+                    Images are client-side optimized before storage. Once uploaded, you can use Google Gemini to auto-complete all fields.
                   </p>
                 )}
               </div>
@@ -783,20 +827,20 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold">
                 Item Description
               </label>
-              {(imagePreview || title) && (
+              {(imagePreview || title || description) && (
                 <button
                   type="button"
                   onClick={handleEnhanceDescription}
                   disabled={isEnhancingDescription}
                   className="text-[11px] text-amber-800 hover:text-amber-950 font-medium flex items-center gap-1 transition disabled:opacity-50"
-                  title="Generate or expand comprehensive appraisal description using AI"
+                  title="Polish and expand this description into museum-grade prose using Google Gemini"
                 >
                   {isEnhancingDescription ? (
                     <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
                   ) : (
                     <Sparkles className="w-3 h-3 text-amber-700" />
                   )}
-                  <span>Enhance with AI</span>
+                  <span>Polish & Expand with AI</span>
                 </button>
               )}
             </div>
@@ -949,7 +993,15 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         </div>
       </div>
 
-      {/* AI Vision Settings Modal */}
+      {/* Gemini API Key Explanatory Prompt Modal */}
+      <GeminiApiKeyPromptModal
+        isOpen={isApiKeyPromptOpen}
+        onClose={() => setIsApiKeyPromptOpen(false)}
+        onOpenSettings={() => setIsAiSettingsOpen(true)}
+        featureName={apiKeyPromptFeature}
+      />
+
+      {/* Google Gemini Settings Modal */}
       <AIVisionSettingsModal
         isOpen={isAiSettingsOpen}
         onClose={() => setIsAiSettingsOpen(false)}

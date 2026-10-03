@@ -35,98 +35,74 @@ export interface AnalyzedItemDetails {
 }
 
 export interface VisionConfig {
-  provider: 'builtin' | 'openai' | 'gemini' | 'ollama' | 'custom';
+  provider: 'gemini';
   baseUrl: string;
   apiKey: string;
   model: string;
+  isEnvKey?: boolean;
+  hasManualKey?: boolean;
 }
 
 const STORAGE_KEY = 'curator_vision_config';
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
-export function isGeminiConfig(config: VisionConfig): boolean {
-  if (config.provider === 'gemini') return true;
-  if (config.apiKey && config.apiKey.startsWith('AIzaSy')) return true;
-  if (config.baseUrl && config.baseUrl.includes('generativelanguage.googleapis.com')) return true;
-  return false;
-}
-
+/**
+ * Retrieve active Google Gemini vision configuration.
+ * Priority: User-entered manual key in localStorage > Environment variable in .env.local
+ */
 export function getVisionConfig(): VisionConfig {
+  const envKey = (import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_VISION_API_KEY || '').trim();
+  const envModel = (import.meta.env.VITE_GEMINI_MODEL || import.meta.env.VITE_VISION_MODEL || DEFAULT_MODEL).trim();
+
+  let localKey = '';
+  let localModel = '';
+  let hasManualKey = false;
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed) {
-        let provider: VisionConfig['provider'] = parsed.provider;
-        let apiKey: string = parsed.apiKey || '';
-        let baseUrl: string = parsed.baseUrl || '';
-        let model: string = parsed.model || '';
-
-        // Auto-detect provider if missing or misconfigured
-        if (!provider || provider === 'builtin') {
-          if (apiKey.startsWith('AIzaSy') || baseUrl.includes('generativelanguage.googleapis.com')) {
-            provider = 'gemini';
-          } else if (apiKey) {
-            provider = 'openai';
-          } else {
-            provider = 'builtin';
-          }
+        if (typeof parsed.apiKey === 'string' && parsed.apiKey.trim().length > 0) {
+          localKey = parsed.apiKey.trim();
+          hasManualKey = true;
         }
-
-        // Migrate and clean legacy Gemini configurations
-        if (provider === 'gemini' || apiKey.startsWith('AIzaSy') || baseUrl.includes('generativelanguage.googleapis.com')) {
-          provider = 'gemini';
-          if (!baseUrl || baseUrl.includes('/openai') || baseUrl.includes('api.openai.com')) {
-            baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-          }
-          if (!model || model === 'gpt-4o-mini' || model === 'builtin-appraiser' || model === 'llava') {
-            model = 'gemini-2.5-flash';
-          }
-        } else if (provider === 'openai') {
-          if (!baseUrl) baseUrl = 'https://api.openai.com/v1';
-          if (!model) model = 'gpt-4o-mini';
-        } else if (provider === 'ollama') {
-          if (!baseUrl) baseUrl = 'http://localhost:11434/v1';
-          if (!model) model = 'llava';
+        if (typeof parsed.model === 'string' && parsed.model.trim().length > 0) {
+          localModel = parsed.model.trim();
         }
-
-        return {
-          provider,
-          baseUrl,
-          apiKey,
-          model,
-        };
       }
     }
   } catch (e) {
-    console.warn('Error reading vision config:', e);
+    console.warn('Error reading vision config from storage:', e);
   }
 
-  const envKey = import.meta.env.VITE_VISION_API_KEY || '';
-  const isEnvGemini = envKey.startsWith('AIzaSy');
-  const envProvider = isEnvGemini ? 'gemini' : (envKey ? 'openai' : 'builtin');
-  const envUrl = import.meta.env.VITE_VISION_BASE_URL || (envProvider === 'gemini' ? 'https://generativelanguage.googleapis.com/v1beta' : (envKey ? 'https://api.openai.com/v1' : 'http://localhost:11434/v1'));
-  const envModel = import.meta.env.VITE_VISION_MODEL || (envProvider === 'gemini' ? 'gemini-2.5-flash' : (envKey ? 'gpt-4o-mini' : 'llava'));
+  const finalApiKey = localKey || envKey;
+  const finalModel = localModel || envModel || DEFAULT_MODEL;
+  const isEnvKey = !hasManualKey && Boolean(envKey);
 
   return {
-    provider: envProvider,
-    baseUrl: envUrl,
-    apiKey: envKey,
-    model: envModel,
+    provider: 'gemini',
+    baseUrl: GEMINI_BASE_URL,
+    apiKey: finalApiKey,
+    model: finalModel,
+    isEnvKey,
+    hasManualKey,
   };
 }
 
-export function saveVisionConfig(config: VisionConfig): void {
+/**
+ * Persist user-entered Gemini key and model settings to localStorage.
+ */
+export function saveVisionConfig(config: { apiKey?: string; model?: string }): void {
   try {
-    const toSave = { ...config };
-    if (isGeminiConfig(toSave)) {
-      toSave.provider = 'gemini';
-      if (!toSave.baseUrl || toSave.baseUrl.includes('/openai')) {
-        toSave.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-      }
-      if (!toSave.model || toSave.model === 'gpt-4o-mini') {
-        toSave.model = 'gemini-2.5-flash';
-      }
-    }
+    const current = getVisionConfig();
+    const toSave = {
+      provider: 'gemini',
+      apiKey: (config.apiKey !== undefined ? config.apiKey : current.apiKey).trim(),
+      model: (config.model !== undefined ? config.model : current.model).trim() || DEFAULT_MODEL,
+      baseUrl: GEMINI_BASE_URL,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (e) {
     console.error('Failed to save vision config:', e);
@@ -134,126 +110,89 @@ export function saveVisionConfig(config: VisionConfig): void {
 }
 
 /**
- * Test connectivity to the configured vision AI endpoint.
+ * Clear manual key override from localStorage to restore .env.local default.
  */
-export async function testVisionConnection(customConfig?: VisionConfig): Promise<{
+export function clearManualVisionConfig(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.error('Failed to clear vision config:', e);
+  }
+}
+
+/**
+ * Check if a valid Google Gemini API key is configured (either via .env.local or manual input).
+ */
+export function isGeminiKeyConfigured(): boolean {
+  const config = getVisionConfig();
+  return Boolean(config.apiKey && config.apiKey.length > 0);
+}
+
+/**
+ * Test connectivity directly to the Google Gemini API.
+ */
+export async function testVisionConnection(customConfig?: Partial<VisionConfig>): Promise<{
   success: boolean;
   message: string;
   latencyMs?: number;
 }> {
-  const config = customConfig || getVisionConfig();
+  const current = getVisionConfig();
+  const apiKey = (customConfig?.apiKey !== undefined ? customConfig.apiKey : current.apiKey).trim();
+  const model = (customConfig?.model !== undefined ? customConfig.model : current.model).trim() || DEFAULT_MODEL;
 
-  if (config.provider === 'builtin') {
-    return {
-      success: true,
-      message: 'Built-in Smart Heuristic Appraiser is active and fully functional offline (no API key required).',
-      latencyMs: 12,
-    };
-  }
-
-  if (isGeminiConfig(config)) {
-    if (!config.apiKey) {
-      return {
-        success: false,
-        message: 'Google Gemini API key is required.',
-      };
-    }
-    const startTime = Date.now();
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(config.apiKey)}`;
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers: {
-          'x-goog-api-key': config.apiKey,
-        },
-      });
-
-      const latencyMs = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const count = data.models?.length || 0;
-        const targetModel = (config.model || 'gemini-2.5-flash').replace(/^models\//, '');
-        return {
-          success: true,
-          message: `Successfully connected to Google Gemini API (${latencyMs}ms). Verified ${count} models accessible. Selected: ${targetModel}`,
-          latencyMs,
-        };
-      }
-
-      const errData = await response.json().catch(() => null);
-      const errMsg = errData?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-      return {
-        success: false,
-        message: `Gemini API authentication failed (${response.status}): ${errMsg}`,
-        latencyMs,
-      };
-    } catch (err: any) {
-      const latencyMs = Date.now() - startTime;
-      return {
-        success: false,
-        message: `Connection failed: ${err?.message || err}. Ensure you are online and your API key is valid.`,
-        latencyMs,
-      };
-    }
-  }
-
-  if (!config.baseUrl) {
+  if (!apiKey) {
     return {
       success: false,
-      message: 'Base URL must be specified.',
+      message: 'Google Gemini API key is missing. Please provide a key in settings or .env.local.',
     };
   }
 
   const startTime = Date.now();
   try {
-    const endpoint = config.baseUrl.replace(/\/+$/, '') + '/models';
+    const endpoint = `${GEMINI_BASE_URL}/models?key=${encodeURIComponent(apiKey)}`;
     const response = await fetch(endpoint, {
       method: 'GET',
       headers: {
-        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+        'x-goog-api-key': apiKey,
       },
     });
 
     const latencyMs = Date.now() - startTime;
     if (response.ok) {
+      const data = await response.json();
+      const count = data.models?.length || 0;
+      const cleanModel = model.replace(/^models\//, '');
       return {
         success: true,
-        message: `Successfully connected to Vision endpoint (${latencyMs}ms). Model: ${config.model}`,
+        message: `Successfully connected to Google Gemini (${latencyMs}ms). Verified ${count} models accessible. Target: ${cleanModel}`,
         latencyMs,
       };
     }
 
-    // Some endpoints may not allow GET /models, try a lightweight dry-run
-    if (response.status === 401 || response.status === 403) {
-      return {
-        success: false,
-        message: `Authentication failed (${response.status}): Check your API key.`,
-        latencyMs,
-      };
-    }
-
+    const errData = await response.json().catch(() => null);
+    const errMsg = errData?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
     return {
-      success: true,
-      message: `Endpoint reached with status ${response.status} (${latencyMs}ms). Ready for appraisal calls.`,
+      success: false,
+      message: `Gemini API authentication failed (${response.status}): ${errMsg}`,
       latencyMs,
     };
   } catch (err: any) {
     const latencyMs = Date.now() - startTime;
     return {
       success: false,
-      message: `Connection failed: ${err?.message || err}. Ensure endpoint is reachable and CORS is enabled.`,
+      message: `Connection failed: ${err?.message || err}. Ensure you are online.`,
       latencyMs,
     };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Image Analysis & Detail Auto-Completion
+// Image Analysis & Detail Auto-Completion (All Fields)
 // ---------------------------------------------------------------------------
 
 /**
- * Deeply analyzes an antique/collectible image to auto-complete catalog details
- * (title, maker, category, subcategory, period, condition, valuation, dimensions, and rich description).
+ * Deeply analyzes an antique/collectible image to auto-complete ALL catalog details:
+ * title, category, subcategory, maker, pattern, period, condition, dimensions, valuation, and rich description.
  */
 export async function analyzeImageAndCompleteDetails(
   imageDataUrl: string,
@@ -261,52 +200,61 @@ export async function analyzeImageAndCompleteDetails(
 ): Promise<AnalyzedItemDetails> {
   const config = getVisionConfig();
 
-  // If external neural endpoint is configured with a key or local Ollama URL
-  if (config.provider !== 'builtin' && (config.apiKey || config.baseUrl.includes('localhost'))) {
-    try {
-      return await callLiveVisionAnalysis(imageDataUrl, existingDraft, config);
-    } catch (err: any) {
-      console.error('Live multimodal vision call failed:', err);
-      // Give explicit feedback to the user on external AI failure rather than silent default
-      const providerLabel = isGeminiConfig(config) ? 'Google Gemini' : config.provider;
-      throw new Error(`AI Appraisal failed (${providerLabel}): ${err?.message || err}`);
-    }
+  if (!config.apiKey) {
+    throw new Error('GEMINI_API_KEY_REQUIRED');
   }
 
-  // Built-in expert antique analysis engine
-  return generateOfflineImageAnalysis(imageDataUrl, existingDraft);
+  try {
+    return await callGeminiVision(imageDataUrl, existingDraft, config);
+  } catch (err: any) {
+    console.error('Google Gemini live appraisal call failed:', err);
+    throw new Error(`Google Gemini Appraisal failed: ${err?.message || err}`);
+  }
 }
 
+// ---------------------------------------------------------------------------
+// Description Polishing & Expansion (Description Field Only)
+// ---------------------------------------------------------------------------
+
 /**
- * Dedicated call to expand or refine only the item description using AI.
+ * Dedicated call to elevate, refine, or write an eloquent catalog description
+ * based on current item details, existing draft notes, and optional photograph.
  */
 export async function enhanceDescriptionWithAI(
-  imageDataUrl: string,
+  imageDataUrl: string | undefined,
   currentDraft: Partial<Item>
 ): Promise<string> {
-  const analysis = await analyzeImageAndCompleteDetails(imageDataUrl, currentDraft);
-  return analysis.description;
+  const config = getVisionConfig();
+
+  if (!config.apiKey) {
+    throw new Error('GEMINI_API_KEY_REQUIRED');
+  }
+
+  return callGeminiEnhanceDescription(imageDataUrl, currentDraft, config);
 }
 
+// ---------------------------------------------------------------------------
+// Marks & Hallmark Research (Notes / Hallmarks Field Only)
+// ---------------------------------------------------------------------------
+
 /**
- * Dedicated research call focusing on marks, hallmarks, backstamps, and factory registries.
+ * Dedicated research call focusing specifically on marks, hallmarks, backstamps, and registries.
  */
 export async function researchMarksWithAI(
   imageDataUrl: string,
   makerOrMarkHint?: string
 ): Promise<{ notes: string; detectedMarks: string[] }> {
-  const analysis = await analyzeImageAndCompleteDetails(imageDataUrl, {
-    maker: makerOrMarkHint,
-  });
+  const config = getVisionConfig();
 
-  return {
-    notes: analysis.notes || 'No factory mark records identified on current photographic capture.',
-    detectedMarks: analysis.detectedMarks || ['Visual inspection completed'],
-  };
+  if (!config.apiKey) {
+    throw new Error('GEMINI_API_KEY_REQUIRED');
+  }
+
+  return callGeminiResearchMarks(imageDataUrl, makerOrMarkHint, config);
 }
 
 // ---------------------------------------------------------------------------
-// Multimodal Helpers
+// Multimodal Base64 & JSON Helpers
 // ---------------------------------------------------------------------------
 
 async function extractBase64AndMime(imageDataUrl: string): Promise<{ mimeType: string; data: string }> {
@@ -317,7 +265,7 @@ async function extractBase64AndMime(imageDataUrl: string): Promise<{ mimeType: s
     }
   }
 
-  // If it's a blob URL or remote URL, fetch it and convert to base64
+  // Fetch blob or remote URL and convert to base64
   const response = await fetch(imageDataUrl);
   const blob = await response.blob();
   const mimeType = blob.type || 'image/jpeg';
@@ -419,7 +367,7 @@ Generate an appraisal-grade catalog record. Output valid JSON strictly conformin
 }`;
 
 // ---------------------------------------------------------------------------
-// Google Gemini Native Multimodal API Caller
+// Google Gemini Native Multimodal API Callers
 // ---------------------------------------------------------------------------
 
 async function callGeminiVision(
@@ -433,7 +381,7 @@ async function callGeminiVision(
     ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, and write a thorough appraisal description.`
     : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and valuation.`;
 
-  const preferredModel = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
+  const preferredModel = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
   const modelsToTry = [preferredModel];
   if (!modelsToTry.includes('gemini-2.5-flash')) modelsToTry.push('gemini-2.5-flash');
   if (!modelsToTry.includes('gemini-1.5-flash')) modelsToTry.push('gemini-1.5-flash');
@@ -442,7 +390,7 @@ async function callGeminiVision(
 
   for (const model of modelsToTry) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+      const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -513,257 +461,143 @@ async function callGeminiVision(
   throw lastError || new Error('Failed to analyze image with Google Gemini');
 }
 
-// ---------------------------------------------------------------------------
-// OpenAI / Ollama Multimodal API Caller
-// ---------------------------------------------------------------------------
-
-async function callOpenAIVision(
-  imageDataUrl: string,
-  existingDraft: Partial<Item>,
+async function callGeminiEnhanceDescription(
+  imageDataUrl: string | undefined,
+  currentDraft: Partial<Item>,
   config: VisionConfig
-): Promise<AnalyzedItemDetails> {
-  let finalImageUrl = imageDataUrl;
-  if (!imageDataUrl.startsWith('data:') && !imageDataUrl.startsWith('http://') && !imageDataUrl.startsWith('https://')) {
-    const { mimeType, data: base64Data } = await extractBase64AndMime(imageDataUrl);
-    finalImageUrl = `data:${mimeType};base64,${base64Data}`;
+): Promise<string> {
+  const promptText = `You are a specialist antique cataloguer, curator, and decorative arts historian.
+The collector has provided the following item information:
+- Title: "${currentDraft.title || 'Untitled Antique'}"
+- Category: "${currentDraft.category || 'Decorative Art'}" ${currentDraft.subcategory ? `(${currentDraft.subcategory})` : ''}
+- Maker / Factory: "${currentDraft.maker || 'Unattributed / Artisan Studio'}"
+- Pattern or Model: "${currentDraft.modelOrPattern || 'None specified'}"
+- Period / Date: "${currentDraft.periodOrYear || 'Historical period'}"
+- Condition: "${currentDraft.condition || 'Good'}" ${currentDraft.conditionNotes ? `(${currentDraft.conditionNotes})` : ''}
+- Hallmarks / Mark Notes: "${currentDraft.notes || 'None recorded'}"
+- Current Draft Description (if any): "${currentDraft.description || ''}"
+
+TASK:
+Write an eloquent, museum-grade descriptive catalog entry (1 to 2 engaging paragraphs, 110-180 words) describing the piece.
+Focus on form, styling, materials, aesthetic significance, and decorative techniques.
+${currentDraft.description ? 'Refine, elevate, and expand upon the collector’s existing description draft rather than replacing it with something generic.' : 'Produce an authentic, comprehensive appraisal-quality catalog description.'}
+${imageDataUrl ? 'Incorporate specific visual characteristics observed in the provided photograph (glaze, patina, form, decoration).' : ''}
+
+OUTPUT FORMAT:
+Return ONLY the description text paragraph(s). Do not include JSON formatting, markdown code fences, or conversational intro.`;
+
+  const model = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+
+  const parts: any[] = [{ text: promptText }];
+
+  if (imageDataUrl && (imageDataUrl.startsWith('data:') || imageDataUrl.startsWith('http') || imageDataUrl.startsWith('blob:'))) {
+    try {
+      const { mimeType, data: base64Data } = await extractBase64AndMime(imageDataUrl);
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: base64Data,
+        },
+      });
+    } catch (e) {
+      console.warn('Could not extract image for description enhancement, proceeding text-only:', e);
+    }
   }
-
-  const userPromptText = existingDraft.title || existingDraft.category
-    ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, and write a thorough appraisal description.`
-    : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and valuation.`;
-
-  const endpoint = config.baseUrl.replace(/\/+$/, '') + '/chat/completions';
 
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+      'x-goog-api-key': config.apiKey,
     },
     body: JSON.stringify({
-      model: config.model,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: APPRAISAL_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: userPromptText },
-            {
-              type: 'image_url',
-              image_url: { url: finalImageUrl },
-            },
-          ],
-        },
-      ],
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        temperature: 0.35,
+      },
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Vision API error (${response.status}): ${errorText}`);
+    let cleanErr = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      if (errJson?.error?.message) cleanErr = errJson.error.message;
+    } catch {}
+    throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
   }
 
   const data = await response.json();
-  const rawContent = data.choices?.[0]?.message?.content;
-  if (!rawContent) {
-    throw new Error('Empty response received from vision model');
+  const rawText = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
+  if (!rawText.trim()) {
+    throw new Error('Empty response received from Gemini for description enhancement');
   }
 
-  const parsed = parseJsonFromModelOutput(rawContent);
-  return sanitizeAnalysisResponse(parsed, existingDraft);
+  return rawText.trim();
 }
 
-async function callLiveVisionAnalysis(
+async function callGeminiResearchMarks(
   imageDataUrl: string,
-  existingDraft: Partial<Item>,
+  makerOrMarkHint: string | undefined,
   config: VisionConfig
-): Promise<AnalyzedItemDetails> {
-  if (isGeminiConfig(config)) {
-    return callGeminiVision(imageDataUrl, existingDraft, config);
-  }
-  return callOpenAIVision(imageDataUrl, existingDraft, config);
-}
+): Promise<{ notes: string; detectedMarks: string[] }> {
+  const { mimeType, data: base64Data } = await extractBase64AndMime(imageDataUrl);
 
-// ---------------------------------------------------------------------------
-// Smart Local Offline Appraisal Engine
-// ---------------------------------------------------------------------------
+  const prompt = `You are an expert specialist in antique hallmarks, maker marks, backstamps, ceramic factory registries, and touchmarks.
+Analyze this image focusing specifically on identifying the maker's mark, hallmark, signature, patent registry mark, or factory backstamp.
+${makerOrMarkHint ? `Collector hint: "${makerOrMarkHint}"` : ''}
 
-function generateOfflineImageAnalysis(
-  _imageDataUrl: string,
-  existingDraft: Partial<Item>
-): AnalyzedItemDetails {
-  const draftTitle = (existingDraft.title || '').toLowerCase();
-  const draftCategory = existingDraft.category || 'Ceramics & Porcelain';
+Output valid JSON conforming to this schema:
+{
+  "detectedMarks": ["list of specific marks detected, e.g. 'Anchor for Birmingham', 'Lion Passant sterling', 'Moorcroft impressed script'"],
+  "notes": "Detailed research notes on mark attribution, dating range, factory history, and registration diamonds (60-120 words)."
+}`;
 
-  // Determine domain theme based on draft clues or defaults
-  if (draftTitle.includes('dragon') || draftTitle.includes('sculpt') || draftTitle.includes('figurine') || draftTitle.includes('baby')) {
-    return {
-      title: existingDraft.title || 'Studio Art Sculpted Dragon Figurine',
-      category: 'Ceramics & Porcelain',
-      subcategory: existingDraft.subcategory || 'Collectibles',
-      maker: existingDraft.maker || 'Artisan Ceramic Studio',
-      modelOrPattern: existingDraft.modelOrPattern || 'Mythical Creatures Series',
-      periodOrYear: existingDraft.periodOrYear || 'c. Late 20th Century / Contemporary',
-      condition: 'Excellent',
-      conditionNotes: 'Intact wings and extremities. Vibrant matte glaze without chips, fleabites, or hairline fractures.',
-      estimatedValue: existingDraft.estimatedValue || 85,
-      currency: 'GBP',
-      dimensions: {
-        height: 14.5,
-        width: 16.0,
-        depth: 11.2,
-        unit: 'cm',
+  const model = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': config.apiKey,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.2,
       },
-      description: 'Charming handcrafted ceramic sculpture depicting a baby winged dragon with expressive anatomical modeling. Features finely textured scales, articulated spinal ridges, and outspread membranous wings. Finished in a subtle gradient earthy glaze with lustrous highlighted accents along the crest and claws.',
-      notes: 'Incised artisan monogram on underside of base. Hand-modeled stoneware with high-fire mineral wash.',
-      confidenceScore: 92,
-      detectedMarks: ['Incised studio monogram on base rim', 'Glaze batch inspection mark'],
-      historicalContext: 'Contemporary studio ceramic sculpture influenced by Celtic and mythological decorative traditions.',
-    };
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini Mark Research error: ${errorText}`);
   }
 
-  if (draftCategory === 'Ceramics & Porcelain' || draftTitle.includes('vase') || draftTitle.includes('plate') || draftTitle.includes('charger') || draftTitle.includes('pot')) {
-    const sub = existingDraft.subcategory || 'Japanese';
-    const isJapanese = sub.toLowerCase().includes('japan') || draftTitle.includes('meiji') || draftTitle.includes('imari');
-    const isMoorcroft = sub.toLowerCase().includes('moorcroft') || draftTitle.includes('moorcroft');
+  const data = await response.json();
+  const rawContent = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '{}';
+  const parsed = parseJsonFromModelOutput(rawContent);
 
-    if (isMoorcroft) {
-      return {
-        title: existingDraft.title || 'Moorcroft Pottery Tubeline Decorated Baluster Vase',
-        category: 'Ceramics & Porcelain',
-        subcategory: 'Moorcroft',
-        maker: 'William Moorcroft',
-        modelOrPattern: 'Pomegranate & Berries Pattern',
-        periodOrYear: 'c. 1925',
-        condition: 'Mint',
-        conditionNotes: 'Flawless tubeline slipwork. Mirror-like gloss glaze with pristine dark cobalt ground.',
-        estimatedValue: 480,
-        currency: 'GBP',
-        dimensions: { height: 21.5, width: 11.0, depth: 11.0, unit: 'cm' },
-        description: 'Superb English art pottery vase in classic baluster form. Hand-decorated in raised tubelined slip with ripe whole and sliced pomegranates amidst trailing foliage, set against a graduated deep ochre and royal cobalt ground. Demonstrates exceptional glaze depth and firing clarity.',
-        notes: 'Impressed "MOORCROFT BURSLEM ENGLAND" with full painter\'s monogram in green slip to unglazed base.',
-        confidenceScore: 94,
-        detectedMarks: ['Impressed Moorcroft factory mark', 'Green slip artist signature monogram'],
-      };
-    }
-
-    if (isJapanese) {
-      return {
-        title: existingDraft.title || 'Japanese Meiji Period Imari Porcelain Charger',
-        category: 'Ceramics & Porcelain',
-        subcategory: 'Japanese',
-        maker: 'Arita / Imari Kilns',
-        modelOrPattern: 'Scalloped Floral & Phoenix Medallion',
-        periodOrYear: 'c. 1890 (Meiji Era)',
-        condition: 'Excellent',
-        conditionNotes: 'Vibrant underglaze blue and overglaze iron-red enamel. Minor gilding rubbing to outer scalloped rim consistent with age.',
-        estimatedValue: 350,
-        currency: 'GBP',
-        dimensions: { height: 5.5, width: 34.0, depth: 34.0, unit: 'cm' },
-        description: 'Imposing late 19th-century Japanese porcelain charger with fluted scalloped rim. Decorated in rich underglaze cobalt blue, radiant iron-red, and gilt brocade enamels. The central circular medallion depicts a blossoming garden terrace surrounded by radiating segmented panels featuring phoenix birds and chrysanthemums.',
-        notes: 'Underglaze blue spur marks visible on foot rim. Six-character pseudo-Ming reign mark on reverse as typical for high Meiji export wares.',
-        confidenceScore: 90,
-        detectedMarks: ['Underglaze blue six-character seal mark', 'Kiln spur marks on foot ring'],
-      };
-    }
-
-    return {
-      title: existingDraft.title || 'Royal Doulton Hand-Painted Bone China Figurine',
-      category: 'Ceramics & Porcelain',
-      subcategory: existingDraft.subcategory || 'Doulton Lambeth',
-      maker: 'Royal Doulton',
-      modelOrPattern: 'Classic Heritage Series',
-      periodOrYear: 'c. 1935',
-      condition: 'Excellent',
-      conditionNotes: 'Pristine enamel work, completely free of chips, restoration, or crazing.',
-      estimatedValue: 120,
-      currency: 'GBP',
-      dimensions: { height: 18.0, width: 12.0, depth: 10.5, unit: 'cm' },
-      description: 'Charming vintage English bone china figurine featuring intricate modeling and delicate hand-painted enamel coloration. Full factory backstamp on base with green printed registration marks and model designation.',
-      notes: 'Full Royal Doulton lion and crown backstamp on underside with green printed registration marks.',
-      confidenceScore: 89,
-      detectedMarks: ['Royal Doulton printed lion and crown backstamp', 'Handwritten HN pattern number'],
-    };
-  }
-
-  if (draftCategory === 'Clocks & Watches') {
-    return {
-      title: existingDraft.title || 'Victorian Flame Mahogany Twin-Fusee Bracket Clock',
-      category: 'Clocks & Watches',
-      subcategory: 'Bracket Clocks',
-      maker: 'English Clockmakers Guild',
-      modelOrPattern: 'Arch-Top Bracket Clock',
-      periodOrYear: 'c. 1870',
-      condition: 'Good',
-      conditionNotes: 'Cleaned movement in working order. Original cast brass side sound frets and brass carrying handle.',
-      estimatedValue: 950,
-      currency: 'GBP',
-      dimensions: { height: 36.0, width: 24.0, depth: 16.5, unit: 'cm' },
-      description: 'Handsome Victorian flame mahogany bracket clock of classic arch-top form with finely cast brass sound frets and top carrying handle. Eight-day twin fusee movement with engraved brass backplate striking the hours on a coiled gong. Silvered dial with Roman numerals.',
-      notes: 'Signed dial with Roman numerals. Fusee movement with pendulum hold-down screw.',
-      confidenceScore: 91,
-      detectedMarks: ['Signed silvered brass dial plate', 'Engraved maker cartouche on backplate'],
-    };
-  }
-
-  if (draftCategory === 'Glass') {
-    return {
-      title: existingDraft.title || 'Art Deco Frosted & Polished Crystal Vanity Box',
-      category: 'Glass',
-      subcategory: 'Art Glass',
-      maker: 'French Crystal Manufactory',
-      modelOrPattern: 'Classical Relief Series',
-      periodOrYear: 'c. 1930',
-      condition: 'Mint',
-      conditionNotes: 'Clean polished rim, intact frosted relief lid with no chips or fleabites.',
-      estimatedValue: 280,
-      currency: 'GBP',
-      dimensions: { height: 6.0, width: 8.5, depth: 8.5, unit: 'cm' },
-      description: 'Heavy circular lead crystal lidded box. The lid features a high relief frosted medallion depicting classical figures emerging from foliage, surrounded by a stepped polished rim.',
-      notes: 'Acid-etched script signature on base perimeter.',
-      confidenceScore: 88,
-      detectedMarks: ['Wheel-cut signature on ground pontil'],
-    };
-  }
-
-  if (draftCategory === 'Metalware') {
-    return {
-      title: existingDraft.title || 'Art Deco Sterling Silver & Guilloché Enamel Cigarette Case',
-      category: 'Metalware',
-      subcategory: 'Silver & Silverplate',
-      maker: 'Birmingham Silversmiths Ltd',
-      modelOrPattern: 'Sunburst Guilloché',
-      periodOrYear: '1934',
-      condition: 'Excellent',
-      conditionNotes: 'Translucent enamel intact without chips or flaking. Original gold-washed interior.',
-      estimatedValue: 380,
-      currency: 'GBP',
-      dimensions: { height: 8.5, width: 7.0, depth: 1.2, unit: 'cm' },
-      description: 'Streamlined Art Deco sterling silver pocket case with radiant engine-turned sunburst pattern beneath translucent vitreous enamel. Push-button thumbpiece with original gilded interior and elastic strap.',
-      notes: 'Complete set of English hallmarks: Lion Passant, Anchor for Birmingham, and date letter.',
-      confidenceScore: 93,
-      detectedMarks: ['Birmingham Assay Office Anchor', 'Lion Passant sterling purity mark', 'Date letter for 1934'],
-    };
-  }
-
-  // Fallback generic antique
   return {
-    title: existingDraft.title || 'Fine Period Decorative Collector Item',
-    category: draftCategory,
-    subcategory: existingDraft.subcategory,
-    maker: existingDraft.maker || 'Unknown Period Craftsman',
-    modelOrPattern: existingDraft.modelOrPattern,
-    periodOrYear: existingDraft.periodOrYear || 'c. Early 20th Century',
-    condition: 'Good',
-    conditionNotes: 'Pleasing natural patina and age-appropriate surface characteristics.',
-    estimatedValue: existingDraft.estimatedValue || 120,
-    currency: 'GBP',
-    dimensions: { height: 18.0, width: 14.0, depth: 10.0, unit: 'cm' },
-    description: 'Fine decorative period object demonstrating traditional craftsmanship and balanced proportions. Surface exhibits gentle age patination and authentic fabrication techniques.',
-    notes: 'Preserved in stable condition. Ready for catalog audit and valuation tracking.',
-    confidenceScore: 86,
-    detectedMarks: ['Maker hallmark / registry stamp on underside'],
+    notes: parsed.notes || 'Visual hallmark inspection completed.',
+    detectedMarks: Array.isArray(parsed.detectedMarks) ? parsed.detectedMarks : ['Mark inspected'],
   };
 }
 
@@ -782,9 +616,9 @@ export async function compareImageWithStoredItems(
     throw new Error('No catalog items with images available to compare against.');
   }
 
-  if (config.provider !== 'builtin' && (config.apiKey || config.baseUrl.includes('localhost'))) {
+  if (config.apiKey) {
     try {
-      return await callLiveVisionComparison(newImageDataUrl, validItemsWithImages, config);
+      return await callGeminiComparison(newImageDataUrl, validItemsWithImages, config);
     } catch (err) {
       console.warn('Remote vision comparison failed, falling back to local analysis:', err);
     }
@@ -826,8 +660,8 @@ Identify which stored item is visually most similar (by maker marks, glaze, form
   ]
 }`;
 
-  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+  const model = (config.model || DEFAULT_MODEL).replace(/^models\//, '').trim();
+  const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -885,108 +719,6 @@ Identify which stored item is visually most similar (by maker marks, glaze, form
   return results.length > 0 ? results : generateOfflineVisualComparisons(newImageDataUrl, storedItems);
 }
 
-async function callOpenAIComparison(
-  newImageDataUrl: string,
-  storedItems: Item[],
-  config: VisionConfig
-): Promise<VisualComparisonResult[]> {
-  let finalImageUrl = newImageDataUrl;
-  if (!newImageDataUrl.startsWith('data:') && !newImageDataUrl.startsWith('http://') && !newImageDataUrl.startsWith('https://')) {
-    const { mimeType, data: base64Data } = await extractBase64AndMime(newImageDataUrl);
-    finalImageUrl = `data:${mimeType};base64,${base64Data}`;
-  }
-
-  const itemsContext = storedItems.slice(0, 8).map((item) => ({
-    id: item.id,
-    title: item.title,
-    maker: item.maker,
-    pattern: item.modelOrPattern,
-    period: item.periodOrYear,
-    category: item.category,
-    image: item.primaryImageUrl,
-  }));
-
-  const systemPrompt = `You are a specialist antique visual appraiser. Compare the user's provided target photograph with the catalog items. Identify which stored item is visually most similar (by maker marks, glaze, form, style, or silhouette). Output JSON format:
-{
-  "matches": [
-    {
-      "id": string,
-      "score": number, // 0 to 100
-      "features": string[],
-      "analysis": string,
-      "suggestedMaker": string,
-      "suggestedPattern": string,
-      "suggestedPeriod": string
-    }
-  ]
-}`;
-
-  const response = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: config.model,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Target Image to compare against candidate stored items: ${JSON.stringify(itemsContext)}. Return the top visual matches.`,
-            },
-            {
-              type: 'image_url',
-              image_url: { url: finalImageUrl },
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Vision API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const rawContent = data.choices?.[0]?.message?.content || '{}';
-  const parsed = parseJsonFromModelOutput(rawContent);
-
-  const results: VisualComparisonResult[] = [];
-  for (const m of parsed.matches || []) {
-    const matched = storedItems.find((i) => i.id === m.id);
-    if (matched) {
-      results.push({
-        matchedItem: matched,
-        similarityScore: m.score,
-        matchedFeatures: m.features || [],
-        visualAnalysis: m.analysis,
-        suggestedMaker: m.suggestedMaker || matched.maker,
-        suggestedPattern: m.suggestedPattern || matched.modelOrPattern,
-        suggestedPeriod: m.suggestedPeriod || matched.periodOrYear,
-      });
-    }
-  }
-
-  return results.length > 0 ? results : generateOfflineVisualComparisons(newImageDataUrl, storedItems);
-}
-
-async function callLiveVisionComparison(
-  newImageDataUrl: string,
-  storedItems: Item[],
-  config: VisionConfig
-): Promise<VisualComparisonResult[]> {
-  if (isGeminiConfig(config)) {
-    return callGeminiComparison(newImageDataUrl, storedItems, config);
-  }
-  return callOpenAIComparison(newImageDataUrl, storedItems, config);
-}
-
 function generateOfflineVisualComparisons(
   _newImageDataUrl: string,
   storedItems: Item[]
@@ -1016,8 +748,8 @@ function generateOfflineVisualComparisons(
       features = ['Assay hallmark stamps', 'Guilloché engine-turning', 'Gilt wash'];
       analysis = `The maker's punch mark and purity hallmarks align with the registered touchmarks of ${item.maker || 'silversmiths'} from ${item.periodOrYear || 'the era'}.`;
     } else {
-      features = ['Surface patina', 'Period crafting cues'];
-      analysis = `General silhouette, material composition, and surface wear bear marked similarity to this catalog item.`;
+      features = ['Period aesthetic', 'Fabrication hallmarks', 'Surface patination'];
+      analysis = `Visual characteristics demonstrate stylistic alignment with this recorded catalog piece.`;
     }
 
     results.push({
@@ -1031,5 +763,5 @@ function generateOfflineVisualComparisons(
     });
   });
 
-  return results.sort((a, b) => b.similarityScore - a.similarityScore);
+  return results;
 }
