@@ -13,6 +13,7 @@ import {
   BookOpen,
   Maximize2
 } from 'lucide-react';
+import { formatDateToUK } from '../utils/date';
 
 interface ItemDetailModalProps {
   item: Item | null;
@@ -254,15 +255,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-stone-500">Acquisition Date:</span>
-                  <span className="font-mono text-stone-800 font-medium">{item.acquisitionDate || 'Unrecorded'}</span>
+                  <span className="font-mono text-stone-800 font-medium">{formatDateToUK(item.acquisitionDate) || 'Unrecorded'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-500">Catalog Entry Date:</span>
-                  <span className="font-mono text-stone-800">{new Date(item.createdAt).toLocaleDateString()}</span>
+                  <span className="font-mono text-stone-800">{formatDateToUK(item.createdAt)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-500">Last Modified:</span>
-                  <span className="font-mono text-stone-800">{new Date(item.updatedAt).toLocaleDateString()}</span>
+                  <span className="font-mono text-stone-800">{formatDateToUK(item.updatedAt)}</span>
                 </div>
                 {item.acquisitionLocation && (
                   <div className="flex justify-between items-start pt-1.5 border-t border-stone-100">

@@ -1,4 +1,5 @@
 import type { Item } from '../types/schema';
+import { formatDateToUK } from './date';
 
 function escapeCSV(value: any): string {
   if (value === null || value === undefined) return '""';
@@ -29,10 +30,10 @@ export function exportToCSV(items: Item[], categoryFilter?: string): void {
     'Estimated Value',
     'Acquisition Cost',
     'Currency',
-    'Acquisition Date',
+    'Acquisition Date (DD/MM/YYYY)',
     'Acquisition Location',
     'Curator Notes',
-    'Cataloged At',
+    'Cataloged At (DD/MM/YYYY)',
   ];
 
   const rows = filtered.map((item) => [
@@ -53,14 +54,15 @@ export function exportToCSV(items: Item[], categoryFilter?: string): void {
     escapeCSV(item.estimatedValue ?? ''),
     escapeCSV(item.acquisitionCost ?? ''),
     escapeCSV(item.currency),
-    escapeCSV(item.acquisitionDate || ''),
+    escapeCSV(formatDateToUK(item.acquisitionDate)),
     escapeCSV(item.acquisitionLocation || ''),
     escapeCSV(item.notes || ''),
-    escapeCSV(new Date(item.createdAt).toISOString()),
+    escapeCSV(formatDateToUK(item.createdAt)),
   ]);
 
   const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
-  const filename = `curator-catalog-${(categoryFilter || 'all').toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+  const nowUK = formatDateToUK(new Date()).replace(/\//g, '-');
+  const filename = `curator-catalog-${(categoryFilter || 'all').toLowerCase().replace(/\s+/g, '-')}-${nowUK}.csv`;
 
   downloadBlob(csvContent, filename, 'text/csv;charset=utf-8;');
 }

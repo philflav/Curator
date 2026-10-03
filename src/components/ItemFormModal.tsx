@@ -25,11 +25,13 @@ import {
   Camera, 
   Check, 
   Loader2, 
-  Plus,
-  Sparkles,
-  Settings,
-  Undo2
+  Plus, 
+  Sparkles, 
+  Settings, 
+  Undo2,
+  Calendar
 } from 'lucide-react';
+import { formatDateToUK, parseUKDateToISO, getTodayUKDate } from '../utils/date';
 
 interface ItemFormModalProps {
   isOpen: boolean;
@@ -104,7 +106,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setDimWidth(itemToEdit.dimensions?.width ? String(itemToEdit.dimensions.width) : '');
       setDimDepth(itemToEdit.dimensions?.depth ? String(itemToEdit.dimensions.depth) : '');
       setDimUnit(itemToEdit.dimensions?.unit || 'cm');
-      setAcquisitionDate(itemToEdit.acquisitionDate || '');
+      setAcquisitionDate(formatDateToUK(itemToEdit.acquisitionDate) || '');
       setAcquisitionLocation(itemToEdit.acquisitionLocation || '');
       setAcquisitionCost(itemToEdit.acquisitionCost !== undefined ? String(itemToEdit.acquisitionCost) : '');
       setCurrency(itemToEdit.currency || 'GBP');
@@ -130,7 +132,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setDimWidth('');
       setDimDepth('');
       setDimUnit('cm');
-      setAcquisitionDate(new Date().toISOString().split('T')[0]);
+      setAcquisitionDate(getTodayUKDate());
       setAcquisitionLocation('');
       setAcquisitionCost('');
       setCurrency('GBP');
@@ -351,7 +353,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           depth: dimDepth ? parseFloat(dimDepth) : undefined,
           unit: dimUnit,
         },
-        acquisitionDate: acquisitionDate || undefined,
+        acquisitionDate: acquisitionDate ? formatDateToUK(acquisitionDate) : undefined,
         acquisitionCost: acquisitionCost ? parseFloat(acquisitionCost) : undefined,
         acquisitionLocation: acquisitionLocation.trim() || undefined,
         currency,
@@ -877,15 +879,46 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1">
-                  Acquired Date
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1" title="UK date format DD/MM/YYYY">
+                  Acquired Date (DD/MM/YYYY)
                 </label>
-                <input
-                  type="date"
-                  value={acquisitionDate}
-                  onChange={(e) => setAcquisitionDate(e.target.value)}
-                  className="w-full px-2 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={acquisitionDate}
+                    onChange={(e) => setAcquisitionDate(e.target.value)}
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
+                    className="w-full pl-2.5 pr-8 py-2 text-sm bg-white border border-stone-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-amber-700/40"
+                  />
+                  <input
+                    type="date"
+                    tabIndex={-1}
+                    className="sr-only"
+                    id="hiddenAcquisitionDatePicker"
+                    value={parseUKDateToISO(acquisitionDate)}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setAcquisitionDate(formatDateToUK(e.target.value));
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const picker = document.getElementById('hiddenAcquisitionDatePicker') as HTMLInputElement;
+                      if (picker && typeof (picker as any).showPicker === 'function') {
+                        (picker as any).showPicker();
+                      } else {
+                        picker?.focus();
+                      }
+                    }}
+                    title="Open Calendar Picker"
+                    className="absolute right-2 p-1 text-stone-400 hover:text-amber-800 transition cursor-pointer"
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
 
