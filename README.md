@@ -66,7 +66,7 @@ Traditional collection management software is often locked behind expensive mont
   - Estimated historical period and stylistic origin
   - Maker identification, potter marks, hallmarks, and factory stamps
   - Condition appraisal and potential restoration flags
-  - Suggested retail valuation range in GBP, USD, or EUR
+  - Realistic auction hammer valuation (secondary market comps, e.g. UK regional auctions, The-Saleroom) in GBP, USD, or EUR
   - Auto-generated professional catalog description
 - **Interactive Review**: Review AI suggestions with a side-by-side comparison before applying, with a one-click Undo capability.
 

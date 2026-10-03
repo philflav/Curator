@@ -476,7 +476,9 @@ function sanitizeAnalysisResponse(
     periodOrYear: parsed.periodOrYear || existingDraft.periodOrYear || 'c. 1920',
     condition: matchedCondition,
     conditionNotes: parsed.conditionNotes || 'Expected minor surface wear consistent with age.',
-    estimatedValue: typeof parsed.estimatedValue === 'number' ? parsed.estimatedValue : (existingDraft.estimatedValue || 150),
+    estimatedValue: typeof parsed.estimatedValue === 'number' && !isNaN(parsed.estimatedValue)
+      ? Math.round(Math.max(0, parsed.estimatedValue))
+      : (existingDraft.estimatedValue || 45),
     currency: 'GBP',
     dimensions: parsed.dimensions || existingDraft.dimensions || { height: 18, width: 12, depth: 10, unit: 'cm' },
     description: parsed.description || 'Authentic period decorative object displaying characteristic craftsmanship and age-appropriate patination.',
@@ -500,14 +502,27 @@ Generate an appraisal-grade catalog record. Output valid JSON strictly conformin
   "periodOrYear": "e.g. c. 1890, c. 1925, Victorian, Meiji Era, George III",
   "condition": "Mint" | "Excellent" | "Good" | "Fair" | "Restored" | "Damaged",
   "conditionNotes": "Specific notes on glaze, patina, chips, hairlines, or expected age wear",
-  "estimatedValue": estimated market/auction valuation as an integer in GBP,
+  "estimatedValue": realistic auction hammer price estimate as an integer in GBP (see VALUATION RULES below),
   "currency": "GBP",
   "dimensions": { "height": number, "width": number, "depth": number, "unit": "cm" },
   "description": "Comprehensive appraisal description covering form, decorative technique, motifs, palette, material, and craftsmanship (120-220 words)",
-  "notes": "Provenance, backstamp transcription, registry diamond marks, and historical context notes",
+  "notes": "Provenance, backstamp transcription, registry diamond marks, historical context, and auction valuation basis",
   "detectedMarks": ["list of backstamps, hallmarks, signatures, or mold marks detected"],
   "confidenceScore": integer 0 to 100
-}`;
+}
+
+CRITICAL VALUATION RULES (SECONDARY MARKET AUCTION HAMMER PRICE ONLY):
+1. AUCTION BENCHMARK: Base "estimatedValue" strictly on REALISTIC REALIZED AUCTION HAMMER PRICES (the price achieved under the hammer at secondary market auction houses like regional UK salerooms, The-Saleroom, Bonhams, Woolley & Wallis, Cheffins, or eBay completed/sold auction lots).
+2. DO NOT USE RETAIL OR DEALER ASKING PRICES: NEVER use retail shop prices, gallery showroom prices, 1stDibs, decorative dealer inventory, or insurance replacement values. Retail dealer prices routinely include 200% to 500%+ markups over auction hammer prices to absorb long holding times and overhead.
+3. CONSERVATIVE COMMERCIAL CALIBRATION:
+   - Commercial/export wares (e.g. late Meiji/Taisho export Satsuma or Kutani, Victorian transferware, common 20th c. Lladró figurines, mass-produced decorative glassware, standard silverplate) are abundant in secondary markets and typically hammer between £15 and £60, NOT hundreds of pounds.
+   - Standard collectible pottery (e.g. Royal Doulton, Beswick, Poole Pottery, SylvaC) typically sells at £20 - £75 at auction unless an exceptionally rare documented model.
+   - High auction valuations (£200+) are reserved ONLY for verified pieces by documented master artisans (e.g. Kinkozan, Yabu Meizan, Galle, Lalique, Moorcroft Florian) or solid precious metals (sterling silver, gold) based on hallmark purity and weight.
+   - When in doubt, lean conservative (£25 - £65 auction hammer).
+4. CONDITION DISCOUNTS:
+   - Deduct heavily for visible damage: chips, cracks, or hairlines reduce hammer estimate by 50% - 80%; glaze crazing, gilt rubbing, or surface scratching reduce by 25% - 40%; restoration or repair reduces by 40% - 70%.
+5. TRANSPARENCY IN NOTES:
+   - In "notes", include a brief note explaining the auction hammer basis (e.g. "Estimated auction hammer value: £X based on secondary market saleroom comps for comparable wares; retail asking prices would be higher.")`;
 
 // ---------------------------------------------------------------------------
 // Google Gemini API Callers
@@ -521,8 +536,8 @@ async function callGeminiVision(
   const { mimeType, data: base64Data } = await extractBase64AndMime(imageDataUrl);
 
   const userPromptText = existingDraft.title || existingDraft.category
-    ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, and write a thorough appraisal description.`
-    : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and valuation.`;
+    ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, write a thorough appraisal description, and calculate a realistic auction hammer valuation based on secondary market saleroom comps (NOT full retail, gallery, or 1stDibs asking prices).`
+    : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and a realistic auction hammer valuation based on secondary market saleroom comps (NOT full retail, gallery, or 1stDibs asking prices).`;
 
   const preferredModel = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
   const modelsToTry = [preferredModel];
@@ -835,8 +850,8 @@ async function callOpenAIVision(
   }
 
   const userPromptText = existingDraft.title || existingDraft.category
-    ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, and write a thorough appraisal description.`
-    : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and valuation.`;
+    ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, write a thorough appraisal description, and calculate a realistic auction hammer valuation based on secondary market saleroom comps (NOT full retail, gallery, or 1stDibs asking prices).`
+    : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and a realistic auction hammer valuation based on secondary market saleroom comps (NOT full retail, gallery, or 1stDibs asking prices).`;
 
   const baseUrl = (config.baseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
   const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;

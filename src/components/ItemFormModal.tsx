@@ -851,14 +851,14 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1">
-                  Est. Value
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1" title="Estimated realistic auction hammer price (secondary market comps, not retail)">
+                  Est. Value (Auction)
                 </label>
                 <input
                   type="number"
                   value={estimatedValue}
                   onChange={(e) => setEstimatedValue(e.target.value)}
-                  placeholder="e.g. 250"
+                  placeholder="e.g. 45"
                   className="w-full px-2.5 py-2 text-sm bg-white border border-stone-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-amber-700/40"
                 />
               </div>

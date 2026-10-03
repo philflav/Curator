@@ -189,8 +189,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               {/* Quick valuation highlight */}
               <div className="mt-6 p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-mono uppercase tracking-wider text-amber-900 block">
-                    Estimated Current Value
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-amber-900 block" title="Estimated secondary market auction hammer price">
+                    Estimated Auction Value (Hammer)
                   </span>
                   <span className="text-2xl font-mono font-bold text-stone-900">
                     {currencySymbol}{(item.estimatedValue ?? 0).toLocaleString()}
