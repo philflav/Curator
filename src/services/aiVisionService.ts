@@ -392,19 +392,188 @@ async function extractBase64AndMime(imageDataUrl: string): Promise<{ mimeType: s
   });
 }
 
+/**
+ * Robustly extracts the first balanced JSON object or array from raw text.
+ * Ignores brackets and braces inside string literals.
+ */
+function extractBalancedJson(text: string): string | null {
+  const firstBrace = text.indexOf('{');
+  const firstBracket = text.indexOf('[');
+
+  if (firstBrace === -1 && firstBracket === -1) return null;
+
+  const isObject = firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket);
+  const startChar = isObject ? '{' : '[';
+  const endChar = isObject ? '}' : ']';
+  const startIndex = isObject ? firstBrace : firstBracket;
+
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = startIndex; i < text.length; i++) {
+    const char = text[i];
+
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      isEscaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === startChar) {
+        depth++;
+      } else if (char === endChar) {
+        depth--;
+        if (depth === 0) {
+          return text.substring(startIndex, i + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extracts and parses all balanced JSON objects present in the text, merging them if multiple exist.
+ */
+function extractAllBalancedJsonObjects(text: string): any[] {
+  const results: any[] = [];
+  let currentIndex = 0;
+
+  while (currentIndex < text.length) {
+    const nextBrace = text.indexOf('{', currentIndex);
+    if (nextBrace === -1) break;
+
+    let depth = 0;
+    let inString = false;
+    let isEscaped = false;
+    let matchedEnd = -1;
+
+    for (let i = nextBrace; i < text.length; i++) {
+      const char = text[i];
+      if (isEscaped) {
+        isEscaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        isEscaped = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === '{') depth++;
+        else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            matchedEnd = i;
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchedEnd !== -1) {
+      const candidateStr = text.substring(nextBrace, matchedEnd + 1);
+      try {
+        const parsed = JSON.parse(candidateStr);
+        if (typeof parsed === 'object' && parsed !== null) {
+          results.push(parsed);
+        }
+      } catch {
+        try {
+          const cleaned = candidateStr.replace(/,\s*([}\]])/g, '$1');
+          const parsed = JSON.parse(cleaned);
+          if (typeof parsed === 'object' && parsed !== null) {
+            results.push(parsed);
+          }
+        } catch {}
+      }
+      currentIndex = matchedEnd + 1;
+    } else {
+      break;
+    }
+  }
+
+  return results;
+}
+
 function parseJsonFromModelOutput(rawText: string): any {
-  let cleaned = rawText.trim();
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-  } else if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  if (!rawText || !rawText.trim()) {
+    throw new Error('Empty response received from AI model.');
   }
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
+
+  let text = rawText.trim();
+
+  // 1. If text is wrapped in markdown code fences, extract the fence content first
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch && fenceMatch[1]) {
+    const fencedContent = fenceMatch[1].trim();
+    try {
+      return JSON.parse(fencedContent);
+    } catch {
+      try {
+        return JSON.parse(fencedContent.replace(/,\s*([}\]])/g, '$1'));
+      } catch {}
+      text = fencedContent;
+    }
+  }
+
+  // 2. Direct JSON.parse attempt
+  try {
+    return JSON.parse(text);
+  } catch {}
+
+  // 3. Trailing comma cleanup direct parse
+  try {
+    return JSON.parse(text.replace(/,\s*([}\]])/g, '$1'));
+  } catch {}
+
+  // 4. Extract all balanced JSON objects and merge them
+  const objects = extractAllBalancedJsonObjects(text);
+  if (objects.length > 0) {
+    if (objects.length === 1) return objects[0];
+    return Object.assign({}, ...objects);
+  }
+
+  // 5. Try single balanced object or array
+  const balanced = extractBalancedJson(text);
+  if (balanced) {
+    try {
+      return JSON.parse(balanced);
+    } catch {
+      try {
+        return JSON.parse(balanced.replace(/,\s*([}\]])/g, '$1'));
+      } catch {}
+    }
+  }
+
+  // 6. Last resort: classic substring between first and last brace
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    const sub = text.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(sub);
+    } catch {
+      try {
+        return JSON.parse(sub.replace(/,\s*([}\]])/g, '$1'));
+      } catch {}
+    }
   }
-  return JSON.parse(cleaned.trim());
+
+  throw new Error(`Failed to parse AI appraisal response as JSON: ${text.slice(0, 100)}...`);
 }
 
 /**
