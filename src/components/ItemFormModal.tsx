@@ -12,13 +12,13 @@ import {
 import { 
   analyzeImageAndCompleteDetails, 
   enhanceDescriptionWithAI, 
-  researchMarksWithAI,
   isGeminiKeyConfigured,
   sanitizeModelOrPattern,
   type AnalyzedItemDetails 
 } from '../services/aiVisionService';
 import { AIVisionSettingsModal } from './AIVisionSettingsModal';
 import { GeminiApiKeyPromptModal } from './GeminiApiKeyPromptModal';
+import { ResearchMarksModal } from './ResearchMarksModal';
 import { 
   X, 
   Upload, 
@@ -58,7 +58,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const [isApiKeyPromptOpen, setIsApiKeyPromptOpen] = useState(false);
   const [apiKeyPromptFeature, setApiKeyPromptFeature] = useState('AI Visual Appraisal');
   const [isEnhancingDescription, setIsEnhancingDescription] = useState(false);
-  const [isResearchingMarks, setIsResearchingMarks] = useState(false);
+  const [isResearchMarksModalOpen, setIsResearchMarksModalOpen] = useState(false);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -315,38 +315,6 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       }
     } finally {
       setIsEnhancingDescription(false);
-    }
-  };
-
-  const handleResearchMarks = async () => {
-    if (!imagePreview && !maker && !title) {
-      alert('Please upload an image or provide a maker/mark name.');
-      return;
-    }
-
-    if (!isGeminiKeyConfigured()) {
-      setApiKeyPromptFeature('Research Marks with AI');
-      setIsApiKeyPromptOpen(true);
-      return;
-    }
-
-    setIsResearchingMarks(true);
-    try {
-      const research = await researchMarksWithAI(imagePreview || '', maker || title);
-      const markNotes = research.detectedMarks?.length
-        ? `[Marks Detected: ${research.detectedMarks.join(', ')}]\n${research.notes}`
-        : research.notes;
-      setNotes((prev) => prev ? `${prev}\n\n${markNotes}` : markNotes);
-    } catch (err: any) {
-      console.error('Research marks failed:', err);
-      if (err?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
-        setApiKeyPromptFeature('Research Marks with AI');
-        setIsApiKeyPromptOpen(true);
-      } else {
-        alert(`Could not research marks: ${err?.message || err}`);
-      }
-    } finally {
-      setIsResearchingMarks(false);
     }
   };
 
@@ -937,22 +905,15 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold">
                 Curator Remarks & Mark Description
               </label>
-              {(imagePreview || maker || title) && (
-                <button
-                  type="button"
-                  onClick={handleResearchMarks}
-                  disabled={isResearchingMarks}
-                  className="text-[11px] text-amber-800 hover:text-amber-950 font-medium flex items-center gap-1 transition disabled:opacity-50"
-                  title="Research hallmarks, backstamps, and factory marks using AI"
-                >
-                  {isResearchingMarks ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
-                  ) : (
-                    <Sparkles className="w-3 h-3 text-amber-700" />
-                  )}
-                  <span>Research Marks with AI</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsResearchMarksModalOpen(true)}
+                className="text-[11px] text-amber-800 hover:text-amber-950 font-medium flex items-center gap-1 transition cursor-pointer"
+                title="Research hallmarks, backstamps, signatures, and maker touchmarks using AI"
+              >
+                <Sparkles className="w-3 h-3 text-amber-700" />
+                <span>Research Marks with AI</span>
+              </button>
             </div>
             <textarea
               rows={3}
@@ -998,6 +959,32 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* AI Marks & Hallmarks Research Modal */}
+      <ResearchMarksModal
+        isOpen={isResearchMarksModalOpen}
+        onClose={() => setIsResearchMarksModalOpen(false)}
+        initialImage={imagePreview || undefined}
+        category={category}
+        makerHint={maker}
+        itemTitle={title}
+        onApplyResults={(results, mode) => {
+          const markHeader = results.detectedMarks?.length
+            ? `[Marks Detected: ${results.detectedMarks.join(', ')}]\n`
+            : '';
+          const formattedText = `${markHeader}${results.notes}`.trim();
+          if (mode === 'append') {
+            setNotes((prev) => (prev ? `${prev}\n\n${formattedText}` : formattedText));
+          } else {
+            setNotes(formattedText);
+          }
+        }}
+        onOpenApiKeyPrompt={() => {
+          setIsResearchMarksModalOpen(false);
+          setApiKeyPromptFeature('Research Marks with AI');
+          setIsApiKeyPromptOpen(true);
+        }}
+      />
 
       {/* Gemini API Key Explanatory Prompt Modal */}
       <GeminiApiKeyPromptModal

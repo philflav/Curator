@@ -305,12 +305,16 @@ export async function enhanceDescriptionWithAI(
 // Marks & Hallmark Research (Notes / Hallmarks Field Only)
 // ---------------------------------------------------------------------------
 
+export const NEUTRAL_NO_MARKS_FOUND_NOTE =
+  "No legible hallmarks, maker's marks, backstamps, or artist signatures detected in this image. Expected age-appropriate surface wear without identifiable touchmarks.";
+
 /**
- * Dedicated research call focusing specifically on marks, hallmarks, and registries.
+ * Dedicated research call focusing specifically on marks, hallmarks, signatures, and registries.
  */
 export async function researchMarksWithAI(
   imageDataUrl: string,
-  makerOrMarkHint?: string
+  makerOrMarkHint?: string,
+  categoryHint?: string
 ): Promise<{ notes: string; detectedMarks: string[] }> {
   const config = getVisionConfig();
 
@@ -319,9 +323,9 @@ export async function researchMarksWithAI(
   }
 
   if (config.provider === 'openai') {
-    return callOpenAIResearchMarks(imageDataUrl, makerOrMarkHint, config);
+    return callOpenAIResearchMarks(imageDataUrl, makerOrMarkHint, config, categoryHint);
   }
-  return callGeminiResearchMarks(imageDataUrl, makerOrMarkHint, config);
+  return callGeminiResearchMarks(imageDataUrl, makerOrMarkHint, config, categoryHint);
 }
 
 // ---------------------------------------------------------------------------
@@ -682,22 +686,90 @@ Return ONLY the description text paragraph(s). Do not include JSON formatting, m
   return rawText.trim();
 }
 
+const MARK_RESEARCH_SYSTEM_PROMPT = `You are an expert specialist in antique hallmarks, porcelain backstamps, maker's marks, touchmarks, artist signatures, and foundry stamps.
+Analyze this close-up photograph of an antique, work of art, or collectible.
+
+FOCUS YOUR INSPECTION ON:
+1. Base markings, backstamps, kiln marks, impressed numbers, and glaze factory ciphers (ceramics and porcelain).
+2. Hallmarks on silver, gold, pewter: town mark (e.g. Birmingham Anchor, London Leopard's Head), assay purity stamp (e.g. Lion Passant 925), maker's initials, and date letter.
+3. Signatures, monograms, estate stamps, or inscriptions on canvas, board, paper, or frame (paintings, sketches, and fine art).
+4. Foundry marks, cold-painted signatures, or bronze patination stamps (sculptures and metalware).
+5. Escapement inscriptions, dial maker signatures, movement pillar engravings, or serial plates (clocks and watches).
+6. Registration diamond marks (Rd. No.), kite marks, or patent stamps.
+
+CRITICAL RULES FOR FINDINGS:
+- If authentic, legible marks, signatures, or backstamps are identified:
+  * In "detectedMarks": List each specific mark, hallmark punch, signature, or stamp identified (e.g., ["Anchor for Birmingham", "Lion Passant sterling", "Date letter 'k' for 1909", "Maker punch 'W.M' for William Manton"]).
+  * In "notes": Provide authoritative, concise research notes detailing the attributed maker/artist, date or period, assay office, factory history, and collector significance (60-140 words).
+- If NO discernible, legible marks, signatures, stamps, or hallmarks are detected in this image (such as an unmarked base, illegible wear, general surface without markings, or absence of hallmarks):
+  * In "detectedMarks": Return strictly an empty array [].
+  * In "notes": Return strictly this neutral appraisal statement:
+    "${NEUTRAL_NO_MARKS_FOUND_NOTE}"
+  * Do NOT invent, assume, or hallucinate marks.
+
+Output valid JSON strictly conforming to this schema:
+{
+  "detectedMarks": ["list of specific marks detected; empty array if none found"],
+  "notes": "Research notes on mark attribution and history, or the neutral appraisal statement if none found."
+}`;
+
+function sanitizeMarkResearchResponse(parsed: any): { notes: string; detectedMarks: string[] } {
+  const negativeMarkWords = new Set([
+    'none', 'n/a', 'na', 'no marks', 'no marks detected', 'no marks found',
+    'unmarked', 'unknown', 'none detected', 'not visible', 'none visible',
+    'mark inspected', 'no hallmarks', 'no signature', 'unidentified', 'none identified'
+  ]);
+
+  let detectedMarks: string[] = [];
+  if (Array.isArray(parsed?.detectedMarks)) {
+    detectedMarks = parsed.detectedMarks
+      .filter((m: any) => typeof m === 'string' && m.trim().length > 0)
+      .map((m: string) => m.trim())
+      .filter((m: string) => !negativeMarkWords.has(m.toLowerCase()));
+  }
+
+  let notes = typeof parsed?.notes === 'string' ? parsed.notes.trim() : '';
+
+  const notesLower = notes.toLowerCase();
+  const isNoMarksNote =
+    !notes ||
+    (detectedMarks.length === 0 &&
+      (notesLower.includes('no legible hallmarks') ||
+       notesLower.includes('no marks detected') ||
+       notesLower.includes('no discernible marks') ||
+       notesLower.includes('no backstamp') ||
+       notesLower.includes('no signature') ||
+       notesLower.includes('no identifiable') ||
+       notesLower === 'visual hallmark inspection completed.' ||
+       notesLower === 'mark inspected'));
+
+  if (isNoMarksNote) {
+    notes = NEUTRAL_NO_MARKS_FOUND_NOTE;
+    detectedMarks = [];
+  }
+
+  return {
+    notes,
+    detectedMarks,
+  };
+}
+
 async function callGeminiResearchMarks(
   imageDataUrl: string,
   makerOrMarkHint: string | undefined,
-  config: VisionConfig
+  config: VisionConfig,
+  categoryHint?: string
 ): Promise<{ notes: string; detectedMarks: string[] }> {
   const { mimeType, data: base64Data } = await extractBase64AndMime(imageDataUrl);
 
-  const prompt = `You are an expert specialist in antique hallmarks, maker marks, backstamps, ceramic factory registries, and touchmarks.
-Analyze this image focusing specifically on identifying the maker's mark, hallmark, signature, patent registry mark, or factory backstamp.
-${makerOrMarkHint ? `Collector hint: "${makerOrMarkHint}"` : ''}
+  const contextText = [
+    categoryHint ? `Category context: ${categoryHint}.` : '',
+    makerOrMarkHint ? `Collector hint or known maker: "${makerOrMarkHint}".` : '',
+  ].filter(Boolean).join(' ');
 
-Output valid JSON conforming to this schema:
-{
-  "detectedMarks": ["list of specific marks detected, e.g. 'Anchor for Birmingham', 'Lion Passant sterling', 'Moorcroft impressed script'"],
-  "notes": "Detailed research notes on mark attribution, dating range, factory history, and registration diamonds (60-120 words)."
-}`;
+  const userPrompt = contextText
+    ? `Carefully inspect this image for marks, hallmarks, signatures, or backstamps. ${contextText}`
+    : `Carefully inspect this image for marks, hallmarks, signatures, or backstamps.`;
 
   const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
   const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
@@ -713,7 +785,7 @@ Output valid JSON conforming to this schema:
         {
           role: 'user',
           parts: [
-            { text: prompt },
+            { text: `${MARK_RESEARCH_SYSTEM_PROMPT}\n\n${userPrompt}\n\nIMPORTANT: Return valid JSON matching the requested schema.` },
             {
               inlineData: {
                 mimeType,
@@ -725,24 +797,26 @@ Output valid JSON conforming to this schema:
       ],
       generationConfig: {
         responseMimeType: 'application/json',
-        temperature: 0.2,
+        temperature: 0.15,
       },
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Gemini Mark Research error: ${errorText}`);
+    let cleanErr = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      if (errJson?.error?.message) cleanErr = errJson.error.message;
+    } catch {}
+    throw new Error(`Gemini Mark Research error (${response.status}): ${cleanErr}`);
   }
 
   const data = await response.json();
   const rawContent = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '{}';
   const parsed = parseJsonFromModelOutput(rawContent);
 
-  return {
-    notes: parsed.notes || 'Visual hallmark inspection completed.',
-    detectedMarks: Array.isArray(parsed.detectedMarks) ? parsed.detectedMarks : ['Mark inspected'],
-  };
+  return sanitizeMarkResearchResponse(parsed);
 }
 
 // ---------------------------------------------------------------------------
@@ -890,7 +964,8 @@ Return ONLY the description text paragraph(s). Do not include JSON formatting, m
 async function callOpenAIResearchMarks(
   imageDataUrl: string,
   makerOrMarkHint: string | undefined,
-  config: VisionConfig
+  config: VisionConfig,
+  categoryHint?: string
 ): Promise<{ notes: string; detectedMarks: string[] }> {
   let finalImageUrl = imageDataUrl;
   if (!imageDataUrl.startsWith('data:') && !imageDataUrl.startsWith('http')) {
@@ -898,15 +973,14 @@ async function callOpenAIResearchMarks(
     finalImageUrl = `data:${mimeType};base64,${data}`;
   }
 
-  const prompt = `You are an expert specialist in antique hallmarks, maker marks, backstamps, ceramic factory registries, and touchmarks.
-Analyze this image focusing specifically on identifying the maker's mark, hallmark, signature, patent registry mark, or factory backstamp.
-${makerOrMarkHint ? `Collector hint: "${makerOrMarkHint}"` : ''}
+  const contextText = [
+    categoryHint ? `Category context: ${categoryHint}.` : '',
+    makerOrMarkHint ? `Collector hint or known maker: "${makerOrMarkHint}".` : '',
+  ].filter(Boolean).join(' ');
 
-Output valid JSON conforming to this schema:
-{
-  "detectedMarks": ["list of specific marks detected, e.g. 'Anchor for Birmingham', 'Lion Passant sterling', 'Moorcroft impressed script'"],
-  "notes": "Detailed research notes on mark attribution, dating range, factory history, and registration diamonds (60-120 words)."
-}`;
+  const userPrompt = contextText
+    ? `Carefully inspect this image for marks, hallmarks, signatures, or backstamps. ${contextText}`
+    : `Carefully inspect this image for marks, hallmarks, signatures, or backstamps.`;
 
   const baseUrl = (config.baseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
   const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
@@ -921,30 +995,34 @@ Output valid JSON conforming to this schema:
       model: config.model || 'gpt-4o-mini',
       response_format: { type: 'json_object' },
       messages: [
+        { role: 'system', content: MARK_RESEARCH_SYSTEM_PROMPT },
         {
           role: 'user',
           content: [
-            { type: 'text', text: prompt },
+            { type: 'text', text: userPrompt },
             { type: 'image_url', image_url: { url: finalImageUrl } },
           ],
         },
       ],
+      temperature: 0.15,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI Mark Research error: ${errorText}`);
+    let cleanErr = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      if (errJson?.error?.message) cleanErr = errJson.error.message;
+    } catch {}
+    throw new Error(`OpenAI Mark Research error (${response.status}): ${cleanErr}`);
   }
 
   const data = await response.json();
   const rawContent = data.choices?.[0]?.message?.content || '{}';
   const parsed = parseJsonFromModelOutput(rawContent);
 
-  return {
-    notes: parsed.notes || 'Visual hallmark inspection completed.',
-    detectedMarks: Array.isArray(parsed.detectedMarks) ? parsed.detectedMarks : ['Mark inspected'],
-  };
+  return sanitizeMarkResearchResponse(parsed);
 }
 
 // ---------------------------------------------------------------------------
