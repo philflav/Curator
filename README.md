@@ -1,6 +1,6 @@
 # Curator — Antiques & Fine Art Catalog
 
-[![Version](https://img.shields.io/badge/version-1.0.0-amber.svg)](https://github.com/philflav/Curator)
+[![Version](https://img.shields.io/badge/version-1.1.0-amber.svg)](https://github.com/philflav/Curator)
 [![PWA](https://img.shields.io/badge/PWA-Installable-5f4131.svg)](https://github.com/philflav/Curator)
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
@@ -271,7 +271,7 @@ Curator/
 ├── index.html                 # App shell with PWA tags & self-healing watchdog
 ├── vite.config.ts             # Vite configuration with Workbox & PWA settings
 ├── vercel.json                # Vercel deployment configuration & asset headers
-└── package.json               # Dependencies and scripts (v1.0.0)
+└── package.json               # Dependencies and scripts (v1.1.0)
 ```
 
 ---
