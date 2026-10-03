@@ -563,6 +563,10 @@ CRITICAL VALUATION RULES (SECONDARY MARKET AUCTION HAMMER PRICE ONLY):
 /**
  * Executes a Gemini generateContent request with multi-model fallback and automated error diagnostics.
  */
+/**
+ * Executes a Gemini generateContent request with multi-model fallback, v1/v1beta versioning,
+ * dynamic model discovery, and automated error diagnostics.
+ */
 async function executeGeminiGenerateContent(
   apiKey: string,
   preferredModel: string,
@@ -586,85 +590,119 @@ async function executeGeminiGenerateContent(
   }
 
   let lastError: Error | null = null;
+  let last404Body = '';
   let saw404 = false;
 
-  for (let i = 0; i < candidateModels.length; i++) {
-    const model = candidateModels[i];
-    const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // 1. Try candidate models across v1beta and v1
+  for (const model of candidateModels) {
+    const cleanModel = model.replace(/^models\//, '').trim();
+    for (const apiVer of ['v1beta', 'v1']) {
+      const endpoint = `https://generativelanguage.googleapis.com/${apiVer}/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          contents,
-          generationConfig,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const candidate = data.candidates?.[0];
-        if (!candidate) {
-          if (data.promptFeedback?.blockReason) {
-            throw new Error(`Gemini response was blocked by safety filters: ${data.promptFeedback.blockReason}`);
-          }
-          throw new Error('No candidate returned from Gemini model');
-        }
-        const rawText = candidate.content?.parts?.map((p: any) => p.text || '').join('') || '';
-        if (!rawText.trim()) {
-          throw new Error(`Empty response from Gemini (${candidate.finishReason || 'no content'})`);
-        }
-        return { rawText, usedModel: model };
-      }
-
-      if (response.status === 404) {
-        saw404 = true;
-        console.warn(`Gemini model "${model}" returned 404. Trying next model candidate...`);
-        continue;
-      }
-
-      const errorText = await response.text();
-      let cleanErr = errorText;
       try {
-        const errJson = JSON.parse(errorText);
-        if (errJson?.error?.message) cleanErr = errJson.error.message;
-      } catch {}
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents,
+            generationConfig,
+          }),
+        });
 
-      if (cleanErr.includes('SERVICE_DISABLED') || cleanErr.includes('has not been used in project')) {
-        throw new Error(
-          'The Generative Language (Gemini) API is disabled for this key project. Please get a free pre-activated key at https://aistudio.google.com/app/apikey.'
-        );
-      }
+        if (response.ok) {
+          const data = await response.json();
+          const candidate = data.candidates?.[0];
+          if (!candidate) {
+            if (data.promptFeedback?.blockReason) {
+              throw new Error(`Gemini response was blocked by safety filters: ${data.promptFeedback.blockReason}`);
+            }
+            throw new Error('No candidate returned from Gemini model');
+          }
+          const rawText = candidate.content?.parts?.map((p: any) => p.text || '').join('') || '';
+          if (!rawText.trim()) {
+            throw new Error(`Empty response from Gemini (${candidate.finishReason || 'no content'})`);
+          }
+          return { rawText, usedModel: cleanModel };
+        }
 
-      throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
-    } catch (err: any) {
-      if (err?.message?.includes('The Generative Language') || err?.message?.includes('blocked by safety filters')) {
-        throw err;
+        if (response.status === 404) {
+          saw404 = true;
+          const bodyText = await response.text().catch(() => '');
+          last404Body = bodyText;
+          continue;
+        }
+
+        const errorText = await response.text();
+        let cleanErr = errorText;
+        try {
+          const errJson = JSON.parse(errorText);
+          if (errJson?.error?.message) cleanErr = errJson.error.message;
+        } catch {}
+
+        if (cleanErr.includes('SERVICE_DISABLED') || cleanErr.includes('has not been used in project')) {
+          throw new Error(
+            'The Generative Language (Gemini) API is disabled for this key project. Please get a free pre-activated key at https://aistudio.google.com/app/apikey.'
+          );
+        }
+
+        throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
+      } catch (err: any) {
+        if (err?.message?.includes('The Generative Language') || err?.message?.includes('blocked by safety filters')) {
+          throw err;
+        }
+        lastError = err;
       }
-      lastError = err;
     }
   }
 
-  // If all candidate models returned 404, diagnose by querying the models list
+  // 2. If candidate models returned 404, query the live models list from Google and try them directly!
   if (saw404) {
     try {
       const listResp = await fetch(`${GEMINI_BASE_URL}/models?key=${encodeURIComponent(apiKey)}`, {
         method: 'GET',
         headers: { 'x-goog-api-key': apiKey },
       });
+
       if (listResp.ok) {
         const listData = await listResp.json();
-        const available = (listData.models || [])
+        const availableLiveModels: string[] = (listData.models || [])
           .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
           .map((m: any) => m.name.replace(/^models\//, ''));
 
-        if (available.length > 0) {
+        // Directly execute using the active models Google says are enabled for this key!
+        for (const liveModel of availableLiveModels) {
+          for (const apiVer of ['v1beta', 'v1']) {
+            try {
+              const liveUrl = `https://generativelanguage.googleapis.com/${apiVer}/models/${liveModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+              const liveResp = await fetch(liveUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify({ contents, generationConfig }),
+              });
+
+              if (liveResp.ok) {
+                const liveData = await liveResp.json();
+                const cand = liveData.candidates?.[0];
+                const text = cand?.content?.parts?.map((p: any) => p.text || '').join('') || '';
+                if (text.trim()) {
+                  console.log(`Auto-switched to active model "${liveModel}" (${apiVer}) for successful execution.`);
+                  saveVisionConfig({ model: liveModel });
+                  return { rawText: text, usedModel: liveModel };
+                }
+              }
+            } catch {}
+          }
+        }
+
+        if (availableLiveModels.length > 0) {
           throw new Error(
-            `Model "${cleanPreferred}" is not available with your key. Available models for your account: ${available.slice(0, 4).join(', ')}. Please update your model in AI Settings.`
+            `Could not execute with requested model "${cleanPreferred}". Verified models on your key: ${availableLiveModels.slice(0, 5).join(', ')}. Please select one in AI Settings. (Details: ${last404Body || '404 NOT_FOUND'})`
           );
         }
       } else {
@@ -676,13 +714,13 @@ async function executeGeminiGenerateContent(
         }
       }
     } catch (diagErr: any) {
-      if (diagErr?.message && (diagErr.message.includes('Available models') || diagErr.message.includes('Google AI Studio'))) {
+      if (diagErr?.message && (diagErr.message.includes('Verified models') || diagErr.message.includes('Google AI Studio'))) {
         throw diagErr;
       }
     }
 
     throw new Error(
-      `Gemini model "${cleanPreferred}" was not found (404). This usually means your API key is a Firebase/GCP key without Generative Language permissions, or the model name is outdated. Please obtain a free Gemini key at https://aistudio.google.com/app/apikey or switch the model to "gemini-2.5-flash" in Settings.`
+      `Gemini model "${cleanPreferred}" was not found (404). Details: ${last404Body || 'Endpoint returned 404'}. Please ensure you are using a key from https://aistudio.google.com/app/apikey.`
     );
   }
 
