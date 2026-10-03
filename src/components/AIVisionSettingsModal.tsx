@@ -42,7 +42,11 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
     if (isOpen) {
       const cfg: VisionConfig = getVisionConfig();
       setApiKey(cfg.apiKey);
-      setModel(cfg.model || 'gemini-2.5-flash');
+      let curModel = cfg.model || 'gemini-2.5-flash';
+      if (curModel === 'gemini-1.5-flash' || curModel === 'models/gemini-1.5-flash') {
+        curModel = 'gemini-2.5-flash';
+      }
+      setModel(curModel);
       setIsEnvKey(Boolean(cfg.isEnvKey));
       setHasManualKey(Boolean(cfg.hasManualKey));
       setTestResult(null);
@@ -193,25 +197,71 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                 placeholder="Google Gemini (AIzaSy...) or OpenAI (sk-...)"
                 className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
               />
-              <p className="mt-1.5 text-[11px] text-stone-500 flex items-center gap-1">
-                <span>Free tier available at</span>
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-amber-800 underline font-medium hover:text-amber-950 inline-flex items-center gap-0.5"
-                >
-                  Google AI Studio <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-                <span>or OpenAI Platform</span>
-              </p>
+              <div className="mt-1.5 space-y-1">
+                <p className="text-[11px] text-stone-500 flex items-center gap-1">
+                  <span>Get your free Gemini API key at</span>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-800 underline font-medium hover:text-amber-950 inline-flex items-center gap-0.5"
+                  >
+                    Google AI Studio <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </p>
+                <p className="text-[10px] text-stone-500 bg-amber-50/80 border border-amber-200/60 rounded px-2 py-1 leading-relaxed">
+                  <strong className="text-amber-900">Note:</strong> Do not use your Firebase key. The Gemini API requires a dedicated key generated from Google AI Studio.
+                </p>
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold mb-1 flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-stone-400" />
-                Model Identifier
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-mono uppercase tracking-wider text-stone-700 font-semibold flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-stone-400" />
+                  Model Identifier
+                </label>
+                <div className="flex items-center gap-1">
+                  {apiKey.trim().startsWith('sk-') ? (
+                    <button
+                      type="button"
+                      onClick={() => setModel('gpt-4o-mini')}
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
+                        model === 'gpt-4o-mini'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                          : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border-stone-200'
+                      }`}
+                    >
+                      gpt-4o-mini
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setModel('gemini-2.5-flash')}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
+                          model === 'gemini-2.5-flash'
+                            ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                            : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border-stone-200'
+                        }`}
+                      >
+                        gemini-2.5-flash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModel('gemini-2.0-flash')}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
+                          model === 'gemini-2.0-flash'
+                            ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                            : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border-stone-200'
+                        }`}
+                      >
+                        gemini-2.0-flash
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
               <input
                 type="text"
                 value={model}

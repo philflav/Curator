@@ -95,7 +95,16 @@ export function getVisionConfig(): VisionConfig {
   const finalApiKey = localKey || envKey;
   const detected = detectProvider(finalApiKey, localProvider);
   const defaultModel = detected === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
-  const finalModel = localModel || envModel || defaultModel;
+  let finalModel = localModel || envModel || defaultModel;
+
+  // Auto-migrate legacy or sunset gemini-1.5-flash to modern gemini-2.5-flash
+  if (detected === 'gemini') {
+    const clean = finalModel.replace(/^models\//, '').trim();
+    if (clean === 'gemini-1.5-flash' || clean === 'gemini-1.5-flash-latest') {
+      finalModel = 'gemini-2.5-flash';
+    }
+  }
+
   const baseUrl = detected === 'openai' ? OPENAI_BASE_URL : GEMINI_BASE_URL;
   const isEnvKey = !hasManualKey && Boolean(envKey);
 
@@ -225,6 +234,23 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
       const data = await response.json();
       const count = data.models?.length || 0;
       const cleanModel = model.replace(/^models\//, '');
+      const availableModels: string[] = (data.models || [])
+        .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m: any) => m.name.replace(/^models\//, ''));
+
+      const isSupported = availableModels.includes(cleanModel);
+      if (!isSupported && availableModels.length > 0) {
+        const suggested = availableModels.find((m) => m.includes('2.5-flash')) ||
+                          availableModels.find((m) => m.includes('2.0-flash')) ||
+                          availableModels.find((m) => m.includes('flash')) ||
+                          availableModels[0];
+        return {
+          success: true,
+          message: `Connected to Google Gemini (${latencyMs}ms), but "${cleanModel}" is not enabled for your account. Recommended active model: "${suggested}".`,
+          latencyMs,
+        };
+      }
+
       return {
         success: true,
         message: `Successfully connected to Google Gemini (${latencyMs}ms). Verified ${count} models accessible. Target: ${cleanModel}`,
@@ -235,9 +261,9 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
     const errData = await response.json().catch(() => null);
     let errMsg = errData?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
 
-    // Provide friendly advice if this is a Google Cloud project with disabled Gemini API
+    // Provide friendly advice if this is a Google Cloud / Firebase project with disabled Gemini API
     if (errMsg.includes('SERVICE_DISABLED') || errMsg.includes('has not been used in project') || errMsg.includes('is disabled')) {
-      errMsg = 'This Google key belongs to a project where the Gemini API is disabled. Please generate a free standalone key at https://aistudio.google.com/app/apikey (pre-activated for Gemini) or enable the Gemini API in Google Cloud Console.';
+      errMsg = 'This API key belongs to a project where the Gemini API is disabled. Note: Do not use your Firebase key. Please generate a free standalone key at https://aistudio.google.com/app/apikey (pre-activated for Gemini).';
     }
 
     return {
@@ -534,6 +560,135 @@ CRITICAL VALUATION RULES (SECONDARY MARKET AUCTION HAMMER PRICE ONLY):
 // Google Gemini API Callers
 // ---------------------------------------------------------------------------
 
+/**
+ * Executes a Gemini generateContent request with multi-model fallback and automated error diagnostics.
+ */
+async function executeGeminiGenerateContent(
+  apiKey: string,
+  preferredModel: string,
+  contents: any[],
+  generationConfig?: any
+): Promise<{ rawText: string; usedModel: string }> {
+  const cleanPreferred = (preferredModel || 'gemini-2.5-flash').replace(/^models\//, '').trim();
+  const candidateModels: string[] = [];
+
+  if (cleanPreferred) candidateModels.push(cleanPreferred);
+  const fallbacks = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash',
+    'gemini-2.5-pro',
+    'gemini-1.5-pro',
+  ];
+  for (const f of fallbacks) {
+    if (!candidateModels.includes(f)) candidateModels.push(f);
+  }
+
+  let lastError: Error | null = null;
+  let saw404 = false;
+
+  for (let i = 0; i < candidateModels.length; i++) {
+    const model = candidateModels[i];
+    const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const candidate = data.candidates?.[0];
+        if (!candidate) {
+          if (data.promptFeedback?.blockReason) {
+            throw new Error(`Gemini response was blocked by safety filters: ${data.promptFeedback.blockReason}`);
+          }
+          throw new Error('No candidate returned from Gemini model');
+        }
+        const rawText = candidate.content?.parts?.map((p: any) => p.text || '').join('') || '';
+        if (!rawText.trim()) {
+          throw new Error(`Empty response from Gemini (${candidate.finishReason || 'no content'})`);
+        }
+        return { rawText, usedModel: model };
+      }
+
+      if (response.status === 404) {
+        saw404 = true;
+        console.warn(`Gemini model "${model}" returned 404. Trying next model candidate...`);
+        continue;
+      }
+
+      const errorText = await response.text();
+      let cleanErr = errorText;
+      try {
+        const errJson = JSON.parse(errorText);
+        if (errJson?.error?.message) cleanErr = errJson.error.message;
+      } catch {}
+
+      if (cleanErr.includes('SERVICE_DISABLED') || cleanErr.includes('has not been used in project')) {
+        throw new Error(
+          'The Generative Language (Gemini) API is disabled for this key project. Please get a free pre-activated key at https://aistudio.google.com/app/apikey.'
+        );
+      }
+
+      throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
+    } catch (err: any) {
+      if (err?.message?.includes('The Generative Language') || err?.message?.includes('blocked by safety filters')) {
+        throw err;
+      }
+      lastError = err;
+    }
+  }
+
+  // If all candidate models returned 404, diagnose by querying the models list
+  if (saw404) {
+    try {
+      const listResp = await fetch(`${GEMINI_BASE_URL}/models?key=${encodeURIComponent(apiKey)}`, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': apiKey },
+      });
+      if (listResp.ok) {
+        const listData = await listResp.json();
+        const available = (listData.models || [])
+          .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+          .map((m: any) => m.name.replace(/^models\//, ''));
+
+        if (available.length > 0) {
+          throw new Error(
+            `Model "${cleanPreferred}" is not available with your key. Available models for your account: ${available.slice(0, 4).join(', ')}. Please update your model in AI Settings.`
+          );
+        }
+      } else {
+        const listErrText = await listResp.text();
+        if (listErrText.includes('SERVICE_DISABLED') || listErrText.includes('has not been used in project')) {
+          throw new Error(
+            'This API key belongs to a Google Cloud / Firebase project where the Gemini API is disabled. Note: Do not use your Firebase key. Please create a free Gemini key directly from Google AI Studio: https://aistudio.google.com/app/apikey'
+          );
+        }
+      }
+    } catch (diagErr: any) {
+      if (diagErr?.message && (diagErr.message.includes('Available models') || diagErr.message.includes('Google AI Studio'))) {
+        throw diagErr;
+      }
+    }
+
+    throw new Error(
+      `Gemini model "${cleanPreferred}" was not found (404). This usually means your API key is a Firebase/GCP key without Generative Language permissions, or the model name is outdated. Please obtain a free Gemini key at https://aistudio.google.com/app/apikey or switch the model to "gemini-2.5-flash" in Settings.`
+    );
+  }
+
+  throw lastError || new Error('Failed to analyze with Google Gemini.');
+}
+
 async function callGeminiVision(
   imageDataUrl: string,
   existingDraft: Partial<Item>,
@@ -545,89 +700,35 @@ async function callGeminiVision(
     ? `Analyze this antique photograph. Collector's initial draft notes: Title="${existingDraft.title || ''}", Category="${existingDraft.category || ''}", Maker="${existingDraft.maker || ''}". Please verify or correct these traits, complete all missing fields, write a thorough appraisal description, and calculate a realistic auction hammer valuation based on secondary market saleroom comps (NOT full retail, gallery, or 1stDibs asking prices).`
     : `Analyze this antique photograph. Identify the object, maker, pattern, period, and condition, and produce a complete appraisal record with description and a realistic auction hammer valuation based on secondary market saleroom comps (NOT full retail, gallery, or 1stDibs asking prices).`;
 
-  const preferredModel = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
-  const modelsToTry = [preferredModel];
-  if (!modelsToTry.includes('gemini-2.5-flash')) modelsToTry.push('gemini-2.5-flash');
-  if (!modelsToTry.includes('gemini-1.5-flash')) modelsToTry.push('gemini-1.5-flash');
-
-  let lastError: Error | null = null;
-
-  for (const model of modelsToTry) {
-    try {
-      const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': config.apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: `${APPRAISAL_SYSTEM_PROMPT}\n\n${userPromptText}\n\nIMPORTANT: Return ONLY valid JSON matching the requested schema.` },
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64Data,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.2,
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        { text: `${APPRAISAL_SYSTEM_PROMPT}\n\n${userPromptText}\n\nIMPORTANT: Return ONLY valid JSON matching the requested schema.` },
+        {
+          inlineData: {
+            mimeType,
+            data: base64Data,
           },
-        }),
-      });
+        },
+      ],
+    },
+  ];
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (response.status === 404 && modelsToTry.indexOf(model) < modelsToTry.length - 1) {
-          console.warn(`Gemini model ${model} returned 404, attempting fallback to ${modelsToTry[modelsToTry.indexOf(model) + 1]}...`);
-          continue;
-        }
-        let cleanErr = errorText;
-        try {
-          const errJson = JSON.parse(errorText);
-          if (errJson?.error?.message) cleanErr = errJson.error.message;
-        } catch {}
+  const generationConfig = {
+    responseMimeType: 'application/json',
+    temperature: 0.2,
+  };
 
-        if (cleanErr.includes('SERVICE_DISABLED') || cleanErr.includes('has not been used in project')) {
-          cleanErr = 'The Gemini API is disabled for this key project. Get a pre-activated key at https://aistudio.google.com/app/apikey.';
-        }
+  const { rawText } = await executeGeminiGenerateContent(
+    config.apiKey,
+    config.model,
+    contents,
+    generationConfig
+  );
 
-        throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
-      }
-
-      const data = await response.json();
-      const candidate = data.candidates?.[0];
-      if (!candidate) {
-        if (data.promptFeedback?.blockReason) {
-          throw new Error(`Gemini appraisal blocked by safety filters: ${data.promptFeedback.blockReason}`);
-        }
-        throw new Error('No candidate returned from Gemini vision model');
-      }
-
-      const rawContent = candidate.content?.parts?.map((p: any) => p.text || '').join('') || '';
-      if (!rawContent.trim()) {
-        throw new Error(`Empty response from Gemini (${candidate.finishReason || 'no content'})`);
-      }
-
-      const parsed = parseJsonFromModelOutput(rawContent);
-      return sanitizeAnalysisResponse(parsed, existingDraft);
-    } catch (err: any) {
-      lastError = err;
-      if (err?.message?.includes('404') && modelsToTry.indexOf(model) < modelsToTry.length - 1) {
-        continue;
-      }
-      break;
-    }
-  }
-
-  throw lastError || new Error('Failed to analyze image with Google Gemini');
+  const parsed = parseJsonFromModelOutput(rawText);
+  return sanitizeAnalysisResponse(parsed, existingDraft);
 }
 
 async function callGeminiEnhanceDescription(
@@ -655,9 +756,6 @@ ${imageDataUrl ? 'Incorporate specific visual characteristics observed in the pr
 OUTPUT FORMAT:
 Return ONLY the description text paragraph(s). Do not include JSON formatting, markdown code fences, or conversational intro.`;
 
-  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
-  const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-
   const parts: any[] = [{ text: promptText }];
 
   if (imageDataUrl && (imageDataUrl.startsWith('data:') || imageDataUrl.startsWith('http') || imageDataUrl.startsWith('blob:'))) {
@@ -674,35 +772,15 @@ Return ONLY the description text paragraph(s). Do not include JSON formatting, m
     }
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': config.apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      generationConfig: {
-        temperature: 0.35,
-      },
-    }),
-  });
+  const contents = [{ role: 'user', parts }];
+  const generationConfig = { temperature: 0.35 };
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    let cleanErr = errorText;
-    try {
-      const errJson = JSON.parse(errorText);
-      if (errJson?.error?.message) cleanErr = errJson.error.message;
-    } catch {}
-    throw new Error(`Gemini API error (${response.status}): ${cleanErr}`);
-  }
-
-  const data = await response.json();
-  const rawText = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
-  if (!rawText.trim()) {
-    throw new Error('Empty response received from Gemini for description enhancement');
-  }
+  const { rawText } = await executeGeminiGenerateContent(
+    config.apiKey,
+    config.model,
+    contents,
+    generationConfig
+  );
 
   return rawText.trim();
 }
@@ -821,51 +899,34 @@ async function callGeminiResearchMarks(
     ? `Carefully inspect this image for marks, hallmarks, signatures, or backstamps. ${contextText}`
     : `Carefully inspect this image for marks, hallmarks, signatures, or backstamps.`;
 
-  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
-  const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': config.apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        { text: `${MARK_RESEARCH_SYSTEM_PROMPT}\n\n${userPrompt}\n\nIMPORTANT: Return valid JSON matching the requested schema.` },
         {
-          role: 'user',
-          parts: [
-            { text: `${MARK_RESEARCH_SYSTEM_PROMPT}\n\n${userPrompt}\n\nIMPORTANT: Return valid JSON matching the requested schema.` },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
-          ],
+          inlineData: {
+            mimeType,
+            data: base64Data,
+          },
         },
       ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.15,
-      },
-    }),
-  });
+    },
+  ];
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    let cleanErr = errorText;
-    try {
-      const errJson = JSON.parse(errorText);
-      if (errJson?.error?.message) cleanErr = errJson.error.message;
-    } catch {}
-    throw new Error(`Gemini Mark Research error (${response.status}): ${cleanErr}`);
-  }
+  const generationConfig = {
+    responseMimeType: 'application/json',
+    temperature: 0.15,
+  };
 
-  const data = await response.json();
-  const rawContent = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '{}';
-  const parsed = parseJsonFromModelOutput(rawContent);
+  const { rawText } = await executeGeminiGenerateContent(
+    config.apiKey,
+    config.model,
+    contents,
+    generationConfig
+  );
 
+  const parsed = parseJsonFromModelOutput(rawText);
   return sanitizeMarkResearchResponse(parsed);
 }
 
@@ -1137,45 +1198,34 @@ Identify which stored item is visually most similar (by maker marks, glaze, form
   ]
 }`;
 
-  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
-  const endpoint = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': config.apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        { text: prompt },
         {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
-          ],
+          inlineData: {
+            mimeType,
+            data: base64Data,
+          },
         },
       ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.2,
-      },
-    }),
-  });
+    },
+  ];
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini Comparison API error: ${errorText}`);
-  }
+  const generationConfig = {
+    responseMimeType: 'application/json',
+    temperature: 0.2,
+  };
 
-  const data = await response.json();
-  const rawContent = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
-  const parsed = parseJsonFromModelOutput(rawContent);
+  const { rawText } = await executeGeminiGenerateContent(
+    config.apiKey,
+    config.model,
+    contents,
+    generationConfig
+  );
+
+  const parsed = parseJsonFromModelOutput(rawText);
 
   const results: VisualComparisonResult[] = [];
   for (const m of parsed.matches || []) {
