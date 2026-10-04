@@ -1,11 +1,38 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import pkg from './package.json';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const pkgPath = path.resolve(__dirname, 'package.json');
+
+/** Read the version fresh from disk each time the config is loaded (no bundler/JSON caching). */
+function readAppVersion(): string {
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+/** Restarts the dev server whenever package.json changes so __APP_VERSION__ is re-evaluated. */
+function appVersionPlugin(): Plugin {
+  return {
+    name: 'curator-app-version',
+    configureServer(server) {
+      server.watcher.add(pkgPath);
+      server.watcher.on('change', (file) => {
+        if (path.resolve(file) === pkgPath) {
+          server.restart();
+        }
+      });
+    },
+  };
+}
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(readAppVersion()),
   },
   base: '/',
   server: {
@@ -15,10 +42,12 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    appVersionPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: {
-        enabled: true,
+        // Disabled so the dev server never serves a stale cached bundle (e.g. an old version string)
+        enabled: false,
       },
       includeAssets: [
         'favicon.ico',
