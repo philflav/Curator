@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "sync:version": "node scripts/syncVersion.js",
+    "version": "node scripts/syncVersion.js && git add README.md",
     "migrate:dates": "node scripts/migrateDatesToUK.js"
   },
   "dependencies": {
