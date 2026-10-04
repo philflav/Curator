@@ -105,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     Curator
                   </h1>
                   <span className="text-xs px-2 py-0.5 rounded-full font-mono bg-stone-100 text-stone-600 border border-stone-200">
-                    v1.2.0
+                    v{__APP_VERSION__}
                   </span>
                 </div>
                 <p className="text-xs text-stone-500 font-sans">
