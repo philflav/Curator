@@ -99,14 +99,19 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
           <div className="p-4 flex-1 flex flex-col justify-between">
             <div>
               {/* Category & Subcategory */}
-              <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-800 mb-1 flex items-center gap-1 flex-wrap">
-                <span>{item.category}</span>
-                {item.subcategory && (
-                  <>
-                    <span className="text-stone-300 font-normal">›</span>
-                    <span className="text-amber-950 font-medium">{item.subcategory}</span>
-                  </>
-                )}
+              <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-800 mb-1 flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span>{item.category}</span>
+                  {item.subcategory && (
+                    <>
+                      <span className="text-stone-300 font-normal">›</span>
+                      <span className="text-amber-950 font-medium">{item.subcategory}</span>
+                    </>
+                  )}
+                </div>
+                <span className="font-mono text-[10px] text-stone-500 font-normal bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">
+                  {item.id}
+                </span>
               </div>
 
               {/* Title */}

@@ -86,7 +86,11 @@ export const CatalogTable: React.FC<CatalogTableProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] uppercase tracking-wider text-amber-800 font-medium flex items-center gap-1">
+                  <div className="text-[11px] uppercase tracking-wider text-amber-800 font-medium flex items-center gap-1.5 mt-0.5">
+                    <span className="font-mono text-[10px] text-stone-500 font-normal bg-stone-100 px-1 py-0.5 rounded border border-stone-200">
+                      {item.id}
+                    </span>
+                    <span className="text-stone-400">•</span>
                     <span>{item.category}</span>
                     {item.subcategory && (
                       <span className="text-stone-500 font-normal">({item.subcategory})</span>

@@ -32,12 +32,14 @@ import {
   Calendar
 } from 'lucide-react';
 import { formatDateToUK, parseUKDateToISO, getTodayUKDate } from '../utils/date';
+import { generateNextItemId } from '../utils/itemId';
 
 interface ItemFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (item: Item) => Promise<void>;
   itemToEdit?: Item | null;
+  existingItems?: Item[];
 }
 
 export const ItemFormModal: React.FC<ItemFormModalProps> = ({
@@ -45,6 +47,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   onClose,
   onSave,
   itemToEdit,
+  existingItems,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -329,7 +332,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const itemId = itemToEdit?.id || 'item-' + Date.now();
+      const itemId = itemToEdit?.id || generateNextItemId(existingItems);
       let finalImageUrl = imagePreview;
 
       // If a new photo was selected, upload it
@@ -388,10 +391,15 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       >
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-white">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <h2 className="text-lg font-serif font-bold text-stone-900">
               {itemToEdit ? 'Edit Antique Record' : 'Catalog New Antique'}
             </h2>
+            {itemToEdit && (
+              <span className="text-xs font-mono font-medium text-stone-600 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                ID: {itemToEdit.id}
+              </span>
+            )}
           </div>
           <button
             onClick={onClose}

@@ -26,7 +26,7 @@ const LOCAL_STORAGE_KEY = 'curator_local_items_db';
 // High quality initial demonstration items
 const INITIAL_DEMO_ITEMS: Item[] = [
   {
-    id: 'item-001',
+    id: 'item-0001',
     title: 'Royal Doulton "The Old Balloon Seller" Figurine',
     category: 'Ceramics & Porcelain',
     subcategory: 'Doulton Lambeth',
@@ -53,7 +53,7 @@ const INITIAL_DEMO_ITEMS: Item[] = [
     updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 5,
   },
   {
-    id: 'item-002',
+    id: 'item-0002',
     title: 'Victorian Mahogany Fusee Bracket Clock',
     category: 'Clocks & Watches',
     subcategory: 'Bracket Clocks',
@@ -80,7 +80,7 @@ const INITIAL_DEMO_ITEMS: Item[] = [
     updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 10,
   },
   {
-    id: 'item-003',
+    id: 'item-0003',
     title: 'Lalique France Frosted Crystal "Daphne" Powder Box',
     category: 'Glass',
     subcategory: 'Art Glass',
@@ -107,7 +107,7 @@ const INITIAL_DEMO_ITEMS: Item[] = [
     updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
   },
   {
-    id: 'item-004',
+    id: 'item-0004',
     title: 'Art Deco Silver & Enamel Cigarette Case',
     category: 'Metalware',
     subcategory: 'Silver & Silverplate',
@@ -134,7 +134,7 @@ const INITIAL_DEMO_ITEMS: Item[] = [
     updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 1,
   },
   {
-    id: 'item-005',
+    id: 'item-0005',
     title: 'George III Chippendale Mahogany Bureau Bookcase',
     category: 'Furniture',
     subcategory: 'Cabinets & Bookcases',
@@ -161,7 +161,7 @@ const INITIAL_DEMO_ITEMS: Item[] = [
     updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 3,
   },
   {
-    id: 'item-006',
+    id: 'item-0006',
     title: 'Moorcroft "Pomegranate" Pattern Baluster Vase',
     category: 'Ceramics & Porcelain',
     subcategory: 'Moorcroft',
@@ -188,7 +188,7 @@ const INITIAL_DEMO_ITEMS: Item[] = [
     updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 4,
   },
   {
-    id: 'item-007',
+    id: 'item-0007',
     title: 'Japanese Meiji Period Imari Porcelain Charger',
     category: 'Ceramics & Porcelain',
     subcategory: 'Japanese',

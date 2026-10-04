@@ -1,7 +1,7 @@
 {
   "name": "curator-antiques-catalog",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "sync:version": "node scripts/syncVersion.js",
     "version": "node scripts/syncVersion.js && git add README.md",
-    "migrate:dates": "node scripts/migrateDatesToUK.js"
+    "migrate:dates": "node scripts/migrateDatesToUK.js",
+    "migrate:ids": "node scripts/migrateItemIdsToShort.js"
   },
   "dependencies": {
     "clsx": "^2.1.1",

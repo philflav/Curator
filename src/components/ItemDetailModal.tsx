@@ -58,8 +58,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 Sync Required
               </span>
             )}
-            <span className="text-xs font-mono text-stone-500">
-              ID: {item.id.slice(0, 8)}
+            <span className="text-xs font-mono text-stone-600 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+              ID: {item.id}
             </span>
           </div>
 

@@ -21,6 +21,7 @@ import {
   processSyncQueue 
 } from './services/syncService';
 import { isFirebaseConfigured } from './services/firebase';
+import { generateNextItemId } from './utils/itemId';
 import { Navbar } from './components/Navbar';
 import { CatalogGrid } from './components/CatalogGrid';
 import { CatalogTable } from './components/CatalogTable';
@@ -438,6 +439,7 @@ export function App() {
         }}
         onSave={handleSaveItem}
         itemToEdit={itemToEdit}
+        existingItems={items}
       />
 
       {/* Firebase & Data Storage Modal */}
@@ -464,7 +466,7 @@ export function App() {
         onSelectExistingItem={(item) => setActiveItem(item)}
         onUseMatchForNewItem={(_imageBlob, previewUrl, suggested) => {
           setItemToEdit({
-            id: 'item-' + Date.now(),
+            id: generateNextItemId(items),
             title: suggested.title || '',
             category: suggested.category || 'Ceramics & Porcelain',
             maker: suggested.maker || '',
