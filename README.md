@@ -45,6 +45,7 @@ Traditional collection management software is often locked behind expensive mont
 
 ### 🏺 Comprehensive Item Cataloging
 - **Structured Fields**: Title, category, subcategory, maker/artisan, model/pattern number, period or creation year, condition, physical dimensions (cm/in), acquisition cost, acquisition date, acquisition venue, estimated market valuation, notes, and provenance.
+- **Sequential 4-Digit Item IDs (`item-0001` – `item-9999`)**: Professional, clean museum catalog reference numbers replacing long timestamp hashes, rendered in full across cards, audit spreadsheets, detail views, and edit modals.
 - **UK Date Standard (DD/MM/YYYY)**: All dates across forms, detail views, audit spreadsheets, and CSV exports adhere to standard UK formatting (`DD/MM/YYYY`), complete with an integrated popover calendar picker.
 - **7 Core Antique Disciplines**:
   - **Furniture** (*Cabinets & Bookcases, Chests, Clocks & Mirrors, Seating, Tables*)
@@ -63,7 +64,7 @@ Traditional collection management software is often locked behind expensive mont
 - **Sorting Modes**: Recently updated, Highest Value, Lowest Value, Maker (A–Z), and Title (A–Z).
 
 ### 🤖 AI-Powered Visual Appraisal & Hallmark Research
-- **Google Gemini 2.5 Flash Integration**: Point your mobile camera at any antique to analyze traits, origins, and condition.
+- **Google Gemini 3.8 Flash Integration**: Point your mobile camera at any antique to analyze traits, origins, and condition with high-speed multimodal intelligence.
 - **Dedicated Hallmark & Mark Research**: Capture focused macro photographs of underside porcelain backstamps, silver assay marks, diamond registration kite marks, or artist signatures.
 - **Automatic Period/Year Detection**: AI-detected date letters and registration dates from mark research automatically populate the **Period / Year** field in catalog records.
 - **Realistic Auction Hammer Valuations**: Valuations are strictly calibrated to **secondary market auction hammer prices** (e.g., regional UK auction houses, The-Saleroom, Bonhams, Woolley & Wallis) rather than inflated retail dealer or 1stDibs asking prices, with condition depreciation penalties.
@@ -74,16 +75,29 @@ Traditional collection management software is often locked behind expensive mont
 
 ### 💰 Portfolio Valuation
 - **Real-Time Portfolio Valuation**: Dynamic valuation tally with profit/acquisition margin calculations and multi-currency support (£ GBP, $ USD, € EUR).
+- **Category-Scoped Valuation**: Estimated valuation and catalog count dynamically recalculate based on the active category or subcategory, complete with valuation tooltips on category buttons.
 
 ---
 
-## 🚀 What's New in v1.2.0
+## 🚀 What's New in v1.3.0
 
+- **Sequential 4-Digit Item IDs (`item-0001` – `item-9999`)**: Replaced timestamp-based IDs with clean, human-readable museum reference IDs. All UI views (Detail Modal, Cards, Audit Table, Edit Form) now display the full reference ID clearly without truncation.
+- **Automated Firestore Database ID Migration**: Includes an automated migration script (`npm run migrate:ids`) that safely re-indexes existing Firestore cloud collections into clean sequential 4-digit IDs.
+- **Google Gemini 3.8 Flash Upgrade**: Upgraded multimodal appraisal and mark research engine to `gemini-3.8-flash`, featuring client settings auto-migration, flexible model normalization, and parameter sanitization for structured JSON schemas.
+- **Category-Scoped Header Valuation**: The top navigation bar dynamically calculates estimated value and count strictly for the active category and subcategory, defaulting to portfolio totals when viewing all categories.
+- **Category Tooltips**: Category pill buttons now show quick hover tooltips with category item count and aggregate estimated value.
+
+<details>
+<summary><strong>Previous Releases</strong></summary>
+
+### v1.2.0
 - **Dedicated AI Mark, Hallmark & Signature Inspection**: Dedicated workflow to photograph bases, maker marks, hallmarks, and artist signatures independently with registry cross-referencing and automatic Period/Year form updates.
 - **Secondary Market Auction Hammer Valuations**: Re-anchored AI appraisals to actual auction comps (The-Saleroom, UK regional salerooms) instead of full gallery retail asking prices.
 - **Composite Searchable Subcategory Menu**: Replaced horizontal pill row with a sleek composite dropdown menu with live search, item counters, and inline subcategory creation.
 - **Automatic Subcategory Syncing**: Automatic harvesting of subcategories tagged on catalog items (e.g. Lladró) synced to Firestore metadata.
 - **UK Date Standardization (`DD/MM/YYYY`)**: Standardized all date displays, form inputs, calendar pickers, and CSV exports to UK format, backed by an automated database migration script (`npm run migrate:dates`).
+
+</details>
 
 ---
 
@@ -139,7 +153,7 @@ Curator uses a multi-tiered storage architecture:
 | **PWA** | [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) | Service worker, Workbox precaching, offline manifest |
 | **Database** | [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) + [Cloud Firestore](https://firebase.google.com/docs/firestore) | Hybrid offline-first and cloud master database |
 | **Cloud Storage** | [Firebase Storage](https://firebase.google.com/docs/storage) | Optional cloud asset hosting with Base64 fallback |
-| **AI Engine** | [Google Gemini 2.5 Flash](https://ai.google.dev/) | Multimodal visual recognition and appraisal |
+| **AI Engine** | [Google Gemini 3.8 Flash](https://ai.google.dev/) | High-speed multimodal visual recognition, hallmark research, and appraisal |
 
 ---
 
@@ -252,7 +266,9 @@ Curator/
 │   ├── favicon.ico            # Browser favicon
 │   └── manifest.json          # Web App Manifest
 ├── scripts/
-│   └── migrateDatesToUK.js    # Database migration script for UK date formats
+│   ├── migrateDatesToUK.js    # Database migration script for UK date formats
+│   ├── migrateItemIdsToShort.js # Database migration script for sequential 4-digit IDs
+│   └── syncVersion.js         # Version synchronization between package.json & README
 ├── src/
 │   ├── components/            # UI components
 │   │   ├── Navbar.tsx         # Header, search bar, PWA install & sync status
@@ -280,7 +296,8 @@ Curator/
 │   ├── utils/
 │   │   ├── date.ts            # UK date formatting (DD/MM/YYYY) utilities
 │   │   ├── export.ts          # CSV and JSON serialisation utilities
-│   │   └── image.ts           # Client-side image downscaling & processing
+│   │   ├── image.ts           # Client-side image downscaling & processing
+│   │   └── itemId.ts          # Sequential 4-digit item ID generation & validation
 │   ├── App.tsx                # Application root, state & view router
 │   ├── main.tsx               # Service Worker registration & React entrypoint
 │   └── index.css              # Tailwind base styling & font imports
@@ -296,7 +313,9 @@ Curator/
 
 - [x] PWA offline caching and standalone home screen installation.
 - [x] Bi-directional Google Cloud Firestore synchronization.
-- [x] Multimodal AI image appraisal via Gemini 2.5 Flash.
+- [x] Multimodal AI image appraisal & mark research via Google Gemini 3.8 Flash.
+- [x] Sequential 4-digit museum catalog reference IDs (`item-0001` – `item-9999`).
+- [x] Dynamic category-scoped collection valuations and counts.
 - [x] Visual image similarity matching.
 - [x] Alphabetized dynamic category and subcategory hierarchy.
 - [x] Clean CSV and JSON collection export.
