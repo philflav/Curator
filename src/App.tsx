@@ -242,10 +242,28 @@ export function App() {
       });
   }, [items, searchTerm, selectedCategory, selectedSubcategory, sortBy]);
 
-  // Overall Portfolio Valuation
-  const totalValuation = useMemo(() => {
-    return items.reduce((acc, curr) => acc + (curr.estimatedValue || 0), 0);
-  }, [items]);
+  // Category-specific Valuation & Count (reflects selected category and subcategory)
+  const categoryValuation = useMemo(() => {
+    let relevantItems = items;
+    if (selectedCategory !== 'All') {
+      relevantItems = relevantItems.filter((i) => i.category === selectedCategory);
+      if (selectedSubcategory !== 'All') {
+        relevantItems = relevantItems.filter((i) => i.subcategory === selectedSubcategory);
+      }
+    }
+    return relevantItems.reduce((acc, curr) => acc + (curr.estimatedValue || 0), 0);
+  }, [items, selectedCategory, selectedSubcategory]);
+
+  const categoryItemsCount = useMemo(() => {
+    let relevantItems = items;
+    if (selectedCategory !== 'All') {
+      relevantItems = relevantItems.filter((i) => i.category === selectedCategory);
+      if (selectedSubcategory !== 'All') {
+        relevantItems = relevantItems.filter((i) => i.subcategory === selectedSubcategory);
+      }
+    }
+    return relevantItems.length;
+  }, [items, selectedCategory, selectedSubcategory]);
 
   return (
     <div className="min-h-screen bg-[#faf8f5] flex flex-col font-sans">
@@ -265,8 +283,10 @@ export function App() {
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
         onResetDemo={handleResetDemo}
         isFirebaseActive={isFirebaseActive}
-        totalItemsCount={items.length}
-        totalValuation={totalValuation}
+        totalItemsCount={categoryItemsCount}
+        totalValuation={categoryValuation}
+        selectedCategory={selectedCategory}
+        selectedSubcategory={selectedSubcategory}
         pendingSyncCount={pendingSyncCount}
         isSyncing={isSyncing}
         isOnline={isOnline}
@@ -328,7 +348,9 @@ export function App() {
               All Categories ({items.length})
             </button>
             {CATEGORIES.map((cat) => {
-              const count = items.filter((i) => i.category === cat).length;
+              const catItems = items.filter((i) => i.category === cat);
+              const count = catItems.length;
+              const catVal = catItems.reduce((acc, curr) => acc + (curr.estimatedValue || 0), 0);
               return (
                 <button
                   key={cat}
@@ -336,6 +358,7 @@ export function App() {
                     setSelectedCategory(cat);
                     setSelectedSubcategory('All');
                   }}
+                  title={`${cat}: ${count} item${count === 1 ? '' : 's'} • Est. £${catVal.toLocaleString()}`}
                   className={`text-xs px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap ${
                     selectedCategory === cat
                       ? 'bg-stone-800 text-amber-100 shadow-xs'

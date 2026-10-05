@@ -29,6 +29,8 @@ interface NavbarProps {
   isFirebaseActive: boolean;
   totalItemsCount: number;
   totalValuation: number;
+  selectedCategory?: string;
+  selectedSubcategory?: string;
   pendingSyncCount?: number;
   isSyncing?: boolean;
   isOnline?: boolean;
@@ -49,6 +51,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isFirebaseActive,
   totalItemsCount,
   totalValuation,
+  selectedCategory,
+  selectedSubcategory,
   pendingSyncCount = 0,
   isSyncing = false,
   isOnline = true,
@@ -109,7 +113,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-stone-500 font-sans">
-                  {totalItemsCount} cataloged items &bull; £{totalValuation.toLocaleString()} est. value
+                  {selectedCategory && selectedCategory !== 'All' ? (
+                    selectedSubcategory && selectedSubcategory !== 'All' ? (
+                      <>
+                        <span className="font-medium text-stone-700">{totalItemsCount}</span> {totalItemsCount === 1 ? 'item' : 'items'} in {selectedCategory} ({selectedSubcategory}) &bull; <span className="font-semibold text-stone-800">£{totalValuation.toLocaleString()}</span> est. value
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-stone-700">{totalItemsCount}</span> {totalItemsCount === 1 ? 'item' : 'items'} in {selectedCategory} &bull; <span className="font-semibold text-stone-800">£{totalValuation.toLocaleString()}</span> est. value
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <span className="font-medium text-stone-700">{totalItemsCount}</span> cataloged {totalItemsCount === 1 ? 'item' : 'items'} &bull; <span className="font-semibold text-stone-800">£{totalValuation.toLocaleString()}</span> est. value
+                    </>
+                  )}
                 </p>
               </div>
             </div>

@@ -59,6 +59,28 @@ export function detectProvider(apiKey: string, explicitProvider?: string): 'gemi
 }
 
 /**
+ * Normalizes user input model names to the canonical Gemini API model identifier.
+ * e.g., 'gemini-3.8flash', 'Gemini 3.8flash', '3.8flash', 'gemini 3.8 flash' -> 'gemini-3.8-flash'
+ */
+export function normalizeGeminiModel(name: string): string {
+  if (!name) return 'gemini-3.8-flash';
+  const clean = name.replace(/^models\//, '').trim();
+  if (/^gemini[- ]?3\.8[- ]?flash$/i.test(clean) || /^3\.8[- ]?flash$/i.test(clean)) {
+    return 'gemini-3.8-flash';
+  }
+  if (/^gemini[- ]?2\.5[- ]?flash$/i.test(clean) || /^2\.5[- ]?flash$/i.test(clean)) {
+    return 'gemini-2.5-flash';
+  }
+  if (/^gemini[- ]?2\.0[- ]?flash$/i.test(clean) || /^2\.0[- ]?flash$/i.test(clean)) {
+    return 'gemini-2.0-flash';
+  }
+  if (/^gemini[- ]?1\.5[- ]?flash$/i.test(clean) || /^1\.5[- ]?flash$/i.test(clean)) {
+    return 'gemini-1.5-flash';
+  }
+  return clean;
+}
+
+/**
  * Retrieve active vision configuration.
  * Automatically adapts between Google Gemini and OpenAI based on key format.
  */
@@ -94,14 +116,21 @@ export function getVisionConfig(): VisionConfig {
 
   const finalApiKey = localKey || envKey;
   const detected = detectProvider(finalApiKey, localProvider);
-  const defaultModel = detected === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
+  const defaultModel = detected === 'openai' ? 'gpt-4o-mini' : 'gemini-3.8-flash';
   let finalModel = localModel || envModel || defaultModel;
 
-  // Auto-migrate legacy or sunset gemini-1.5-flash to modern gemini-2.5-flash
+  // Auto-migrate legacy or previous gemini models to modern gemini-3.8-flash
   if (detected === 'gemini') {
-    const clean = finalModel.replace(/^models\//, '').trim();
-    if (clean === 'gemini-1.5-flash' || clean === 'gemini-1.5-flash-latest') {
-      finalModel = 'gemini-2.5-flash';
+    const clean = normalizeGeminiModel(finalModel);
+    if (
+      clean === 'gemini-1.5-flash' ||
+      clean === 'gemini-1.5-flash-latest' ||
+      clean === 'gemini-2.5-flash' ||
+      clean === 'gemini-2.0-flash'
+    ) {
+      finalModel = 'gemini-3.8-flash';
+    } else {
+      finalModel = clean;
     }
   }
 
@@ -126,8 +155,11 @@ export function saveVisionConfig(config: { apiKey?: string; model?: string; prov
     const current = getVisionConfig();
     const apiKey = (config.apiKey !== undefined ? config.apiKey : current.apiKey).trim();
     const provider = detectProvider(apiKey, config.provider || current.provider);
-    const defaultModel = provider === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
-    const model = (config.model !== undefined ? config.model : current.model).trim() || defaultModel;
+    const defaultModel = provider === 'openai' ? 'gpt-4o-mini' : 'gemini-3.8-flash';
+    let model = (config.model !== undefined ? config.model : current.model).trim() || defaultModel;
+    if (provider === 'gemini') {
+      model = normalizeGeminiModel(model);
+    }
 
     const toSave = {
       provider,
@@ -171,8 +203,9 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
   const current = getVisionConfig();
   const apiKey = (customConfig?.apiKey !== undefined ? customConfig.apiKey : current.apiKey).trim();
   const provider = detectProvider(apiKey, customConfig?.provider || current.provider);
-  const defaultModel = provider === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash';
-  const model = (customConfig?.model !== undefined ? customConfig.model : current.model).trim() || defaultModel;
+  const defaultModel = provider === 'openai' ? 'gpt-4o-mini' : 'gemini-3.8-flash';
+  const rawModel = (customConfig?.model !== undefined ? customConfig.model : current.model).trim() || defaultModel;
+  const model = provider === 'gemini' ? normalizeGeminiModel(rawModel) : rawModel;
 
   if (!apiKey) {
     return {
@@ -240,7 +273,8 @@ export async function testVisionConnection(customConfig?: Partial<VisionConfig>)
 
       const isSupported = availableModels.includes(cleanModel);
       if (!isSupported && availableModels.length > 0) {
-        const suggested = availableModels.find((m) => m.includes('2.5-flash')) ||
+        const suggested = availableModels.find((m) => m.includes('3.8-flash')) ||
+                          availableModels.find((m) => m.includes('2.5-flash')) ||
                           availableModels.find((m) => m.includes('2.0-flash')) ||
                           availableModels.find((m) => m.includes('flash')) ||
                           availableModels[0];
@@ -742,11 +776,12 @@ async function executeGeminiGenerateContent(
   contents: any[],
   generationConfig?: any
 ): Promise<{ rawText: string; usedModel: string }> {
-  const cleanPreferred = (preferredModel || 'gemini-2.5-flash').replace(/^models\//, '').trim();
+  const cleanPreferred = normalizeGeminiModel(preferredModel || 'gemini-3.8-flash');
   const candidateModels: string[] = [];
 
   if (cleanPreferred) candidateModels.push(cleanPreferred);
   const fallbacks = [
+    'gemini-3.8-flash',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
     'gemini-1.5-flash-latest',
@@ -765,20 +800,41 @@ async function executeGeminiGenerateContent(
   // 1. Try candidate models across v1beta and v1
   for (const model of candidateModels) {
     const cleanModel = model.replace(/^models\//, '').trim();
+
+    // Prepare model-compatible generationConfig
+    let modelGenConfig: any = undefined;
+    if (generationConfig) {
+      modelGenConfig = { ...generationConfig };
+      // Gemini 3.8 Flash does not support temperature, topP, topK, candidateCount
+      if (cleanModel.startsWith('gemini-3.8') || cleanModel.startsWith('gemini-4')) {
+        delete modelGenConfig.temperature;
+        delete modelGenConfig.topP;
+        delete modelGenConfig.topK;
+        delete modelGenConfig.candidateCount;
+        delete modelGenConfig.presencePenalty;
+        delete modelGenConfig.frequencyPenalty;
+      }
+      if (Object.keys(modelGenConfig).length === 0) {
+        modelGenConfig = undefined;
+      }
+    }
+
     for (const apiVer of ['v1beta', 'v1']) {
       const endpoint = `https://generativelanguage.googleapis.com/${apiVer}/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
       try {
+        const bodyPayload: any = { contents };
+        if (modelGenConfig) {
+          bodyPayload.generationConfig = modelGenConfig;
+        }
+
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-goog-api-key': apiKey,
           },
-          body: JSON.stringify({
-            contents,
-            generationConfig,
-          }),
+          body: JSON.stringify(bodyPayload),
         });
 
         if (response.ok) {
@@ -843,6 +899,22 @@ async function executeGeminiGenerateContent(
 
         // Directly execute using the active models Google says are enabled for this key!
         for (const liveModel of availableLiveModels) {
+          let liveGenConfig: any = undefined;
+          if (generationConfig) {
+            liveGenConfig = { ...generationConfig };
+            if (liveModel.startsWith('gemini-3.8') || liveModel.startsWith('gemini-4')) {
+              delete liveGenConfig.temperature;
+              delete liveGenConfig.topP;
+              delete liveGenConfig.topK;
+              delete liveGenConfig.candidateCount;
+              delete liveGenConfig.presencePenalty;
+              delete liveGenConfig.frequencyPenalty;
+            }
+            if (Object.keys(liveGenConfig).length === 0) {
+              liveGenConfig = undefined;
+            }
+          }
+
           for (const apiVer of ['v1beta', 'v1']) {
             try {
               const liveUrl = `https://generativelanguage.googleapis.com/${apiVer}/models/${liveModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -852,7 +924,10 @@ async function executeGeminiGenerateContent(
                   'Content-Type': 'application/json',
                   'x-goog-api-key': apiKey,
                 },
-                body: JSON.stringify({ contents, generationConfig }),
+                body: JSON.stringify({
+                  contents,
+                  ...(liveGenConfig ? { generationConfig: liveGenConfig } : {}),
+                }),
               });
 
               if (liveResp.ok) {

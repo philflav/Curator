@@ -419,7 +419,7 @@ export const ResearchMarksModal: React.FC<ResearchMarksModalProps> = ({
         {/* Footer */}
         <div className="flex-shrink-0 px-6 py-3.5 border-t border-stone-200 bg-white flex items-center justify-between">
           <div className="text-[11px] text-stone-500">
-            Powered by Google Gemini 2.5 Flash Vision
+            Powered by Google Gemini 3.8 Flash Vision
           </div>
           <button
             type="button"

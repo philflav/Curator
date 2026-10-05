@@ -208,7 +208,7 @@ You can configure credentials in two ways:
 
 1. Obtain a free Google Gemini API key from [aistudio.google.com](https://aistudio.google.com/).
 2. In Curator, click the **AI Settings** (sparkle icon) in the header.
-3. Paste your API key and select your preferred model (default: `gemini-2.5-flash`).
+3. Paste your API key and select your preferred model (default: `gemini-3.8-flash`).
 4. Alternatively, configure in `.env.local`:
    ```env
    VITE_GEMINI_API_KEY=your_gemini_api_key

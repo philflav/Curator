@@ -31,7 +31,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
   onConfigSaved,
 }) => {
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gemini-2.5-flash');
+  const [model, setModel] = useState('gemini-3.8-flash');
   const [isEnvKey, setIsEnvKey] = useState(false);
   const [hasManualKey, setHasManualKey] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -42,9 +42,14 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
     if (isOpen) {
       const cfg: VisionConfig = getVisionConfig();
       setApiKey(cfg.apiKey);
-      let curModel = cfg.model || 'gemini-2.5-flash';
-      if (curModel === 'gemini-1.5-flash' || curModel === 'models/gemini-1.5-flash') {
-        curModel = 'gemini-2.5-flash';
+      let curModel = cfg.model || 'gemini-3.8-flash';
+      if (
+        curModel === 'gemini-1.5-flash' ||
+        curModel === 'models/gemini-1.5-flash' ||
+        curModel === 'gemini-2.0-flash' ||
+        curModel === 'gemini-2.5-flash'
+      ) {
+        curModel = 'gemini-3.8-flash';
       }
       setModel(curModel);
       setIsEnvKey(Boolean(cfg.isEnvKey));
@@ -77,7 +82,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
   const handleSave = () => {
     saveVisionConfig({
       apiKey: apiKey.trim(),
-      model: model.trim() || 'gemini-2.5-flash',
+      model: model.trim() || 'gemini-3.8-flash',
     });
     if (onConfigSaved) onConfigSaved();
     onClose();
@@ -87,7 +92,7 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
     clearManualVisionConfig();
     const cfg = getVisionConfig();
     setApiKey(cfg.apiKey);
-    setModel(cfg.model || 'gemini-2.5-flash');
+    setModel(cfg.model || 'gemini-3.8-flash');
     setIsEnvKey(Boolean(cfg.isEnvKey));
     setHasManualKey(false);
     setTestResult(null);
@@ -188,10 +193,10 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                   const val = e.target.value;
                   setApiKey(val);
                   setHasManualKey(true);
-                  if (val.trim().startsWith('sk-') && (model === 'gemini-2.5-flash' || !model)) {
+                  if (val.trim().startsWith('sk-') && (model === 'gemini-3.8-flash' || !model)) {
                     setModel('gpt-4o-mini');
                   } else if (val.trim().startsWith('AIza') && (model === 'gpt-4o-mini' || !model)) {
-                    setModel('gemini-2.5-flash');
+                    setModel('gemini-3.8-flash');
                   }
                 }}
                 placeholder="Google Gemini (AIzaSy...) or OpenAI (sk-...)"
@@ -238,6 +243,17 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                     <>
                       <button
                         type="button"
+                        onClick={() => setModel('gemini-3.8-flash')}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
+                          model === 'gemini-3.8-flash'
+                            ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                            : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border-stone-200'
+                        }`}
+                      >
+                        gemini-3.8-flash
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setModel('gemini-2.5-flash')}
                         className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
                           model === 'gemini-2.5-flash'
@@ -266,11 +282,11 @@ export const AIVisionSettingsModal: React.FC<AIVisionSettingsModalProps> = ({
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder={apiKey.trim().startsWith('sk-') ? 'gpt-4o-mini' : 'gemini-2.5-flash'}
+                placeholder={apiKey.trim().startsWith('sk-') ? 'gpt-4o-mini' : 'gemini-3.8-flash'}
                 className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700/40"
               />
               <p className="mt-1 text-[11px] text-stone-400">
-                Recommended: <code className="font-mono text-stone-600">{apiKey.trim().startsWith('sk-') ? 'gpt-4o-mini' : 'gemini-2.5-flash'}</code>
+                Recommended: <code className="font-mono text-stone-600">{apiKey.trim().startsWith('sk-') ? 'gpt-4o-mini' : 'gemini-3.8-flash'}</code>
               </p>
             </div>
           </div>
